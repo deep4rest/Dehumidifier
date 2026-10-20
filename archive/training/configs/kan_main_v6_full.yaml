@@ -1,0 +1,85 @@
+# 主转轮 KAN v6：v5 的 4 个湿空气特征 + 再生温差驱动力
+# 不包含任何角度、时间常数或角度交叉项。
+data:
+  excel_path: "主转轮拉取的数据.xls"
+  sheet_name: "CollectRecord"
+  header_row: 1
+  time_column: null
+  group_column: null
+  group_columns: ["转轮厚度", "转轮直径"]
+  input_columns:
+    - "转轮厚度"
+    - "转轮直径"
+    - "入口含湿量(g/kg)"
+    - "转轮转速(rpm)"
+    - "再生温度(℃)"
+    - "冷吹入口温度(℃)"
+    - "处理入口温度(℃)"
+    - "处理风速(m/s)"
+    - "冷吹风速(m/s)"
+  output_columns:
+    - "冷吹出口温度"
+    - "冷处出口含湿量"
+    - "处理出口含湿量"
+    - "处理出口温度"
+    - "处理出口露点"
+    - "再生出口含湿量"
+    - "再生出口温度"
+    - "power"
+  derived_features:
+    - "入口饱和水汽压_Ps"
+    - "入口相对湿度_RH"
+    - "入口露点_Tdp"
+    - "入口焓_h"
+    - "再生驱动力_dT"
+
+preprocess:
+  missing_threshold: 0.3
+  missing_strategy: "linear"
+  outlier_method: "iqr"
+  outlier_factor: 3.0
+  scaler: "minmax"
+  scale_range: [-1.0, 1.0]
+  log_transform_outputs: ["处理出口含湿量"]
+
+split:
+  method: "group"
+  train_ratio: 0.70
+  val_ratio: 0.15
+  test_ratio: 0.15
+  test_groups: []
+
+model:
+  hidden_widths: [32]
+  grid_size: 6
+  spline_order: 3
+  grid_range: [-1.0, 1.0]
+
+train:
+  batch_size: 64
+  epochs: 300
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  loss: "mse"
+  loss_weights:
+    冷吹出口温度: 1.0
+    冷处出口含湿量: 2.5
+    处理出口含湿量: 2.0
+    处理出口温度: 1.0
+    处理出口露点: 1.5
+    再生出口含湿量: 2.0
+    再生出口温度: 1.0
+    power: 1.0
+  optimizer: "adamw"
+  scheduler: "plateau"
+  early_stopping_patience: 30
+  grad_clip: 1.0
+  device: "auto"
+  seed: 42
+
+evaluate:
+  error_thresholds: {}
+
+output:
+  artifacts_dir: "results/training/legacy"
+  run_name: "kan_main_v6_full"

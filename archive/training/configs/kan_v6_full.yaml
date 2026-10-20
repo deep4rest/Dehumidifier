@@ -1,0 +1,97 @@
+# 转轮 KAN 建模配置 v6：v4 基础上叠加全部 10 个派生特征（组 A+B+C）
+# 相对 v5 的差异：
+#   1) 新增 6 个派生（处理段角度、处理段时间常数、再生段时间常数、再生驱动力_dT、RH×处理时间、dT×再生时间）
+#   2) hidden_widths 由 [24] 提升到 [32]，匹配扩展后的 18 维输入
+#   3) 其他超参（lr/wd/loss_weights/epochs/patience/seed）与 v5 完全一致，便于消融对比
+
+data:
+  excel_path: "转轮实验数据收集.xlsx"
+  sheet_name: null
+  time_column: null
+  group_column: null
+  input_columns:
+    - "入口含湿量(g/kg)"
+    - "转轮转速(rpm)"
+    - "再生温度(℃)"
+    - "冷吹入口温度(℃)"
+    - "再生角度(°)"
+    - "风速(m/s)"
+    - "冷吹角度(°)"
+    - "处理入口温度(℃)"
+  output_columns:
+    - "冷吹出口温度"
+    - "冷处出口含湿量"
+    - "处理出口含湿量"
+    - "处理出口温度"
+    - "处理出口露点"
+    - "再生出口含湿量"
+    - "再生出口温度"
+    - "power"
+  # 全部 10 个派生特征
+  derived_features:
+    # 组 A：湿空气状态
+    - "入口饱和水汽压_Ps"
+    - "入口相对湿度_RH"
+    - "入口露点_Tdp"
+    - "入口焓_h"
+    # 组 B：工艺/几何
+    - "处理段角度"
+    - "处理段时间常数"
+    - "再生段时间常数"
+    - "再生驱动力_dT"
+    # 组 C：交叉项
+    - "RH×处理时间"
+    - "dT×再生时间"
+
+preprocess:
+  missing_threshold: 0.3
+  missing_strategy: "linear"
+  outlier_method: "iqr"
+  outlier_factor: 3.0
+  scaler: "minmax"
+  scale_range: [-1.0, 1.0]
+  log_transform_outputs:
+    - "处理出口含湿量"
+
+split:
+  method: "time"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  test_groups: []
+
+# 适度扩容以匹配 18 维输入
+model:
+  hidden_widths: [32]
+  grid_size: 6
+  spline_order: 3
+  grid_range: [-1.0, 1.0]
+
+train:
+  batch_size: 64
+  epochs: 300
+  learning_rate: 0.0005
+  weight_decay: 0.0001
+  loss: "mse"
+  loss_weights:
+    冷吹出口温度: 1.0
+    冷处出口含湿量: 2.5
+    处理出口含湿量: 2.0
+    处理出口温度: 1.0
+    处理出口露点: 1.5
+    再生出口含湿量: 2.0
+    再生出口温度: 1.0
+    power: 1.0
+  optimizer: "adamw"
+  scheduler: "plateau"
+  early_stopping_patience: 30
+  grad_clip: 1.0
+  device: "auto"
+  seed: 42
+
+evaluate:
+  error_thresholds: {}
+
+output:
+  artifacts_dir: "results/training/legacy"
+  run_name: "kan_v6_full"

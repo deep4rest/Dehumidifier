@@ -1,0 +1,84 @@
+# 转轮 KAN 建模配置文件
+# 与 configs/default.yaml 类似，但模型结构与训练超参针对 KAN 设计
+# 所有路径相对于项目根目录
+
+data:
+  excel_path: "转轮实验数据收集.xlsx"
+  # 指定建模工作表名称；为 null 时自动选择行数最多的工作表
+  sheet_name: null
+  # 时序排序字段（仅用于按时间划分；KAN 本身不使用时序结构）
+  time_column: null
+  # 实验批次/分组字段，为 null 时不分组
+  group_column: null
+  # 显式指定输入字段（8 列），与 Excel 表头严格一致
+  input_columns:
+    - "入口含湿量(g/kg)"
+    - "转轮转速(rpm)"
+    - "再生温度(℃)"
+    - "冷吹入口温度(℃)"
+    - "再生角度(°)"
+    - "风速(m/s)"
+    - "冷吹角度(°)"
+    - "处理入口温度(℃)"
+  # 显式指定输出字段（8 列）
+  output_columns:
+    - "冷吹出口温度"
+    - "冷处出口含湿量"
+    - "处理出口含湿量"
+    - "处理出口温度"
+    - "处理出口露点"
+    - "再生出口含湿量"
+    - "再生出口温度"
+    - "power"
+
+preprocess:
+  missing_threshold: 0.3
+  missing_strategy: "linear"
+  outlier_method: "iqr"
+  outlier_factor: 3.0
+  # KAN 默认使用 minmax 至 [-1, 1] 区间，与 grid_range 对齐
+  scaler: "minmax"
+  # minmax 缩放的目标区间，仅在 scaler=minmax 时生效
+  scale_range: [-1.0, 1.0]
+  # 在拟合输出缩放器之前对这些列做 log1p 变换（处理跨数量级、长尾分布）
+  # 反归一化时会自动 expm1 还原；列名必须出现在 output_columns 中
+  log_transform_outputs:
+    - "处理出口含湿量"
+
+split:
+  method: "time"
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+  test_groups: []
+
+# KAN 模型结构
+model:
+  # 隐藏层每层宽度，列表越长则层数越多
+  hidden_widths: [16]
+  # B-spline 网格区间数
+  grid_size: 5
+  # B-spline 阶数
+  spline_order: 3
+  # B-spline 输入定义域，建议与缩放区间一致
+  grid_range: [-1.0, 1.0]
+
+train:
+  batch_size: 64
+  epochs: 200
+  learning_rate: 0.001
+  weight_decay: 0.0
+  loss: "mse"            # mse / huber / mae
+  optimizer: "adamw"     # adam / adamw / sgd
+  scheduler: "plateau"   # none / plateau / cosine
+  early_stopping_patience: 20
+  grad_clip: 1.0
+  device: "auto"
+  seed: 42
+
+evaluate:
+  error_thresholds: {}
+
+output:
+  artifacts_dir: "results/training/legacy"
+  run_name: null

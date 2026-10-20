@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dual-rotor-sim"
+version = "0.1.0"
+description = "低露点双转轮除湿机整机仿真库"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scikit-learn>=1.2",
+    "torch>=2.0",
+    "PyYAML>=6.0",
+    "tqdm>=4.65",
+    "openpyxl>=3.1",
+    "matplotlib>=3.6",
+]
+
+[project.scripts]
+dual-rotor-sim = "dual_rotor_sim.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dual_rotor_sim*"]

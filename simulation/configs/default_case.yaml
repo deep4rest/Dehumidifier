@@ -1,0 +1,53 @@
+# 企业当前双转轮系统稳态工况（QY）。
+schema_version: 2
+
+psychrometrics:
+  pressure_Pa: 101325
+  dew_point_basis: water
+
+# 本配置内全部 m³/h 都按下方 outdoor_air 状态与系统压力标定。
+flow_reference:
+  basis: outdoor_air
+
+outdoor_air:
+  T_degC: 35.0
+  W_g_per_kg: 27.02
+  flow_m3h: 4200.0
+
+return_air:
+  T_degC: 20.0
+  W_g_per_kg: 0.2313
+  flow_m3h: 8800.0
+
+regen_outdoor_air:
+  T_degC: 35.0
+  W_g_per_kg: 27.02
+  flow_m3h: 333.0
+
+system_params:
+  fan1_P_kW: 4.0
+  fan2_P_kW: 18.5
+  rotor1:
+    thickness_mm: 200.0
+    diameter_mm: 1220.0
+    process_airspeed_m_s: 1.4
+    cool_blow_airspeed_m_s: 1.2
+    cool_blow_flow_m3h: 200.0
+    regen_angle_deg: 90.0
+    cool_blow_angle_deg: 15.0
+  rotor2:
+    thickness_mm: 300.0
+    diameter_mm: 1220.0
+    process_airspeed_m_s: 3.5
+    cool_blow_airspeed_m_s: 3.3
+    cool_blow_flow_m3h: 800.0
+    regen_angle_deg: 22.5
+    cool_blow_angle_deg: 22.5
+
+control_setpoints:
+  cc1_T_outlet_degC: 11.0
+  cc2_T_outlet_degC: 15.0
+  heater_low_T_degC: 130.0
+  heater_oa_T_degC: 115.0
+  rotor1_rpm: 8.0
+  rotor2_rpm: 6.0

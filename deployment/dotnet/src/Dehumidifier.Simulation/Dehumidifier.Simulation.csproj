@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageId>Dehumidifier.Simulation</PackageId>
+    <Version>1.0.1</Version>
+    <Authors>ModelBuild</Authors>
+    <Description>C# 双转轮除湿机稳态整机仿真 DLL，使用 ONNX Runtime 推理。</Description>
+    <RepositoryUrl>https://github.com/deep4rest/Dehumidifier</RepositoryUrl>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.20.1" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+  </ItemGroup>
+  <ItemGroup Condition="Exists('models\model_contract.json')">
+    <Content Include="models\**\*" Pack="true" PackagePath="contentFiles\any\any\Dehumidifier\models\%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="models\**\*" CopyToOutputDirectory="PreserveNewest" LinkBase="Dehumidifier\models" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="build\Dehumidifier.Simulation.targets" Pack="true" PackagePath="build\Dehumidifier.Simulation.targets" />
+  </ItemGroup>
+</Project>

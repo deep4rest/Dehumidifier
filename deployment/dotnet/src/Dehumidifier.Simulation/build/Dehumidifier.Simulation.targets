@@ -1,0 +1,8 @@
+<Project>
+  <Target Name="CopyDehumidifierModels" AfterTargets="Build" Condition="Exists('$(MSBuildThisFileDirectory)..\contentFiles\any\any\Dehumidifier\models')">
+    <ItemGroup>
+      <_DehumidifierModel Include="$(MSBuildThisFileDirectory)..\contentFiles\any\any\Dehumidifier\models\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_DehumidifierModel)" DestinationFiles="@(_DehumidifierModel->'$(OutDir)Dehumidifier\models\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
