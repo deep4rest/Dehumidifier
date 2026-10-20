@@ -71,9 +71,13 @@ def test_system_uses_oa_state_as_only_total_flow_and_maps_rotors_independently()
     assert states["R2_CB_in"].mdot == pytest.approx(0.3)
     assert states["Supply"].mdot == pytest.approx(1.4)
     assert states["AfterR2_RG"].mdot == pytest.approx(0.3)
-    assert states["AfterR1_RG"].mdot == pytest.approx(0.6)
+    # 企业风量规则（2026-09-17）：Heater_OA 入口 = R1 处理出口 / 3。
+    # 本工况可用量 0.3+0.2=0.5 >= 目标 1.2/3=0.4，走漏风分支。
+    assert states["AfterR1_RG"].mdot == pytest.approx(0.4)
 
     r1_inputs = rotor1.calls[0]
+    # R1 KAN 的再生风量输入必须跟随规则执行后的实际入口流量。
+    assert r1_inputs.regen_flow_m3h == pytest.approx(r1_inputs.process_flow_m3h / 3.0)
     assert (
         r1_inputs.rotor_thickness,
         r1_inputs.rotor_diameter,

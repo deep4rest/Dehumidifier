@@ -52,7 +52,7 @@ def source_files(root: Path) -> list[Path]:
             continue
         rel = path.relative_to(root)
         explicit = rel.as_posix() in ROOT_FILES | set(EXTRA_FILES)
-        if not explicit and any(part in EXCLUDED_DIRS for part in rel.parts[:-1]):
+        if not explicit and any(part in EXCLUDED_DIRS or part.endswith('.egg-info') for part in rel.parts[:-1]):
             continue
         if not explicit and path.suffix.lower() not in TEXT_SUFFIXES:
             continue

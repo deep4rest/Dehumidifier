@@ -17,9 +17,6 @@ import pytest
 from dual_rotor_sim.core.system.components.rotor import Rotor, RotorInputs, RotorEnsemble
 
 
-pytestmark = pytest.mark.requires_models
-
-
 # ---------------------------------------------------------------------------
 # ⑥-A  Rotor.process 与 RotorEnsemble.predict 结果完全一致
 # ---------------------------------------------------------------------------
@@ -148,3 +145,6 @@ def test_rotor_deterministic(rotor_ensemble):
     assert out1.cool_blow_outlet_T == out2.cool_blow_outlet_T
     assert out1.cool_blow_outlet_W == out2.cool_blow_outlet_W
     assert not hasattr(out1, "power_kW")
+
+
+pytestmark = pytest.mark.requires_models

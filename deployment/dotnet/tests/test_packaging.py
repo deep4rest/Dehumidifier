@@ -84,7 +84,8 @@ def test_delivery_hashes_fixture_and_never_claims_unperformed_validation(tmp_pat
     metadata = json.loads((output / "package_metadata.json").read_text())
     assert metadata["strict_migration_evaluated"] is False
     assert metadata["strict_migration_passed"] is False
-    assert metadata["current_python_compatible"] is False
+    assert metadata["source_contract_aligned"] is True
+    assert metadata["current_python_compatible"] == "requires_current_cross_language_validation"
     assert metadata["engineering_acceptance"] == "not_evaluated"
     assert summary["sha256"] == package.sha256(output.with_suffix(".zip"))
     manifest = json.loads(output.with_suffix(".manifest.json").read_text())

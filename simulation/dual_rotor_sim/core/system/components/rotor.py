@@ -32,8 +32,8 @@ _XF_SINGLE_INPUT_COLS = (
     "转轮直径",
     "处理入口温度(℃)",
     "入口含湿量(g/kg)",
-    "处理风速(m/s)",
-    "冷吹风速(m/s)",
+    "处理风量",
+    "冷吹风量",
     "转轮转速(rpm)",
     "再生温度(℃)",
     "再生风量",
@@ -55,8 +55,8 @@ _MAIN_SINGLE_INPUT_COLS = (
     "再生温度(℃)",
     "冷吹入口温度(℃)",
     "处理入口温度(℃)",
-    "处理风速(m/s)",
-    "冷吹风速(m/s)",
+    "处理风量",
+    "冷吹风量",
 )
 _MAIN_SINGLE_OUTPUT_COLS = (
     "处理出口温度",
@@ -217,8 +217,8 @@ _XF_NONNEGATIVE_OUTPUTS = {
 class RotorInputs:
     """转轮稳态输入。
 
-    ``airspeed`` 是处理风速；``cool_blow_airspeed`` 是冷吹风速。厚度和直径
-    仅被 main 模型使用，legacy 模型会忽略它们。
+    正式 KAN 使用 process_flow_m3h/cool_blow_flow_m3h，均按室外参考状态。
+    airspeed/cool_blow_airspeed 仅保留历史接口兼容。厚度和直径用于两台 KAN。
     """
 
     process_inlet_T: float
@@ -233,6 +233,8 @@ class RotorInputs:
     rotor_diameter: float = 1220.0
     cool_blow_airspeed: float = 3.3
     # XF 新风转轮 10 输入所需的再生侧状态
+    process_flow_m3h: float = 0.0
+    cool_blow_flow_m3h: float = 0.0
     regen_flow_m3h: float = 0.0
     regen_inlet_W: float = 0.0
     # 系统总压，用于由处理出口含湿量统一派生水面露点。
@@ -307,6 +309,8 @@ def _raw_row(inputs: RotorInputs) -> Dict[str, float]:
         "冷吹风速(m/s)": inputs.cool_blow_airspeed,
         "冷吹角度(°)": inputs.cool_blow_angle,
         "处理入口温度(℃)": inputs.process_inlet_T,
+        "处理风量": inputs.process_flow_m3h,
+        "冷吹风量": inputs.cool_blow_flow_m3h,
         "再生风量": inputs.regen_flow_m3h,
         "再生入口含湿量": inputs.regen_inlet_W,
         # XF 数据集原始技术表头
@@ -449,7 +453,7 @@ class SingleRotorModel:
         expected_outputs = (
             _XF_SINGLE_OUTPUT_COLS if profile == "xf" else _MAIN_SINGLE_OUTPUT_COLS
         )
-        if metadata.get("profile") not in (None, profile):
+        if metadata.get("profile") != profile:
             raise RuntimeError(
                 f"单 KAN artifact profile 不匹配: artifact={metadata.get('profile')!r}, "
                 f"runtime={profile!r}"
@@ -497,8 +501,10 @@ class SingleRotorModel:
             raise RuntimeError(
                 "单 KAN artifact derived_outputs 必须严格为 ['处理出口露点']"
             )
+        if metadata.get("model_type", "kan") != "kan":
+            raise RuntimeError("运行时只接受 KAN 模型")
         audit_columns = metadata.get("audit_columns")
-        if audit_columns is None or set(audit_columns) != {"power", "处理出口露点"}:
+        if audit_columns is not None and set(audit_columns) != {"power", "处理出口露点"}:
             raise RuntimeError(
                 "单 KAN artifact audit_columns 必须包含 power 和处理出口露点"
             )
@@ -605,6 +611,8 @@ class SingleRotorModel:
                 str(key)[len("kan.") :]: value
                 for key, value in state_dict.items()
             }
+        if isinstance(state_dict, Mapping) and state_dict and all(str(key).startswith("network.") for key in state_dict):
+            state_dict = {str(key)[len("network."):]: value for key, value in state_dict.items()}
         try:
             model.load_state_dict(state_dict)
         except RuntimeError as exc:

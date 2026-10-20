@@ -20,6 +20,7 @@ from .config import (
     AUDIT_COLUMNS,
     DIRECT_OUTPUT_COLUMNS,
     MAIN_INPUT_COLUMNS,
+    VOLUME_INPUT_COLUMNS_BY_PROFILE,
     PROFILE_CONFIGS,
     RotorProfileConfig,
     XF_INPUT_COLUMNS,
@@ -200,10 +201,12 @@ class Preprocessor:
                 raise ValueError("target_transform 不得包含 power 或处理出口露点")
             if set(input_columns) & set(AUDIT_COLUMNS):
                 raise ValueError("input scaler 不得包含 power 或处理出口露点")
-            if tuple(input_columns) not in (
+            allowed_inputs = {
                 tuple(XF_INPUT_COLUMNS),
                 tuple(MAIN_INPUT_COLUMNS),
-            ):
+                *(tuple(columns) for columns in VOLUME_INPUT_COLUMNS_BY_PROFILE.values()),
+            }
+            if tuple(input_columns) not in allowed_inputs:
                 raise ValueError("input scaler 输入列不属于原始量契约")
             scaler_output_columns = getattr(target_scaler, "output_cols", None)
             if scaler_output_columns is not None and tuple(scaler_output_columns) != tuple(target_columns):
@@ -241,8 +244,13 @@ def fit_preprocessor(
         raise ValueError("目标必须严格为六个直接状态输出")
     if set(inputs) & set(AUDIT_COLUMNS):
         raise ValueError("power/处理出口露点不得进入输入张量")
-    if tuple(inputs) not in (tuple(XF_INPUT_COLUMNS), tuple(MAIN_INPUT_COLUMNS)):
-        raise ValueError("输入必须严格属于 XF 10 列或主转轮 9 列原始量契约")
+    allowed_inputs = {
+        tuple(XF_INPUT_COLUMNS),
+        tuple(MAIN_INPUT_COLUMNS),
+        *(tuple(columns) for columns in VOLUME_INPUT_COLUMNS_BY_PROFILE.values()),
+    }
+    if tuple(inputs) not in allowed_inputs:
+        raise ValueError("输入必须严格属于 XF 10 列、主转轮 9 列或风量版原始量契约")
     x = _ensure_matrix(features, columns=len(inputs), label="训练输入")
     y = _ensure_matrix(targets, columns=len(outputs), label="训练目标")
     if len(x) != len(y):

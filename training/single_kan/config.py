@@ -81,6 +81,40 @@ MAIN_INPUT_COLUMNS = (
     "冷吹风速(m/s)",
 )
 
+# 当前尺寸隔离 CSV 使用处理/冷吹风量（m³/h），而不是旧 XLS 中的风速。
+# 这些列只供候选模型训练使用；旧 XLS 兼容入口仍保留上面的历史字段契约。
+VOLUME_XF_INPUT_COLUMNS = (
+    "转轮厚度",
+    "转轮直径",
+    "处理入口温度(℃)",
+    "入口含湿量(g/kg)",
+    "处理风量",
+    "冷吹风量",
+    "转轮转速(rpm)",
+    "再生温度(℃)",
+    "再生风量",
+    "再生入口含湿量",
+)
+VOLUME_MAIN_INPUT_COLUMNS = (
+    "转轮厚度",
+    "转轮直径",
+    "入口含湿量(g/kg)",
+    "转轮转速(rpm)",
+    "再生温度(℃)",
+    "冷吹入口温度(℃)",
+    "处理入口温度(℃)",
+    "处理风量",
+    "冷吹风量",
+)
+VOLUME_INPUT_COLUMNS_BY_PROFILE = {
+    "xf": VOLUME_XF_INPUT_COLUMNS,
+    "main": VOLUME_MAIN_INPUT_COLUMNS,
+}
+ALL_MODEL_INPUT_COLUMNS = tuple(
+    dict.fromkeys((*XF_INPUT_COLUMNS, *MAIN_INPUT_COLUMNS,
+                   *VOLUME_XF_INPUT_COLUMNS, *VOLUME_MAIN_INPUT_COLUMNS))
+)
+
 INPUT_COLUMNS_BY_PROFILE = {"xf": XF_INPUT_COLUMNS, "main": MAIN_INPUT_COLUMNS}
 OUTPUT_COLUMNS_BY_PROFILE = {"xf": DIRECT_OUTPUT_COLUMNS, "main": DIRECT_OUTPUT_COLUMNS}
 XF_OUTPUT_COLUMNS = DIRECT_OUTPUT_COLUMNS

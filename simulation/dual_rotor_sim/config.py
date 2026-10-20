@@ -97,10 +97,15 @@ class SimulationConfig:
             + independent["return_air"]
             - independent["rotor2_cold_blow"]
         )
-        rotor1_regen = (
+        # 企业风量规则（2026-09-17）：Heater_OA 入口目标 = R1 处理出口 / 3。
+        # 可用量（R2 冷吹出 + R1 冷吹出）>= 目标时漏风至目标；否则按
+        # regen_outdoor_air 补风（以配置流量为上限）。实际入口取
+        # min(目标, 可用量 + 补风配置)。
+        rotor1_regen = min(
+            rotor1_process / 3.0,
             independent["rotor2_cold_blow"]
-            + independent["regen_outdoor_air"]
             + independent["rotor1_cold_blow"]
+            + independent["regen_outdoor_air"],
         )
         return {
             "rotor1_process": rotor1_process,
@@ -159,7 +164,9 @@ def _number(value: Any, path: str, *, positive: bool = False) -> float:
     return result
 
 
-def _air_stream(root: Mapping[str, Any], key: str) -> AirStreamConfig:
+def _air_stream(
+    root: Mapping[str, Any], key: str, *, allow_zero_flow: bool = False
+) -> AirStreamConfig:
     section = _mapping(root[key], key)
     _exact_keys(section, _AIR_KEYS, key)
     temperature = _number(section["T_degC"], f"{key}.T_degC")
@@ -168,10 +175,15 @@ def _air_stream(root: Mapping[str, Any], key: str) -> AirStreamConfig:
     humidity = _number(section["W_g_per_kg"], f"{key}.W_g_per_kg")
     if humidity < 0.0:
         raise ConfigError(f"配置字段 {key}.W_g_per_kg 必须 >= 0")
+    flow = _number(section["flow_m3h"], f"{key}.flow_m3h")
+    invalid_flow = flow < 0.0 if allow_zero_flow else flow <= 0.0
+    if invalid_flow:
+        comparator = ">= 0" if allow_zero_flow else "> 0"
+        raise ConfigError(f"配置字段 {key}.flow_m3h 必须 {comparator}")
     return AirStreamConfig(
         T_degC=temperature,
         W_g_per_kg=humidity,
-        flow_m3h=_number(section["flow_m3h"], f"{key}.flow_m3h", positive=True),
+        flow_m3h=flow,
     )
 
 
@@ -231,7 +243,9 @@ def parse_simulation_config(raw: Mapping[str, Any]) -> SimulationConfig:
 
     outdoor_air = _air_stream(root, "outdoor_air")
     return_air = _air_stream(root, "return_air")
-    regen_outdoor_air = _air_stream(root, "regen_outdoor_air")
+    regen_outdoor_air = _air_stream(
+        root, "regen_outdoor_air", allow_zero_flow=True
+    )
 
     system = _mapping(root["system_params"], "system_params")
     _exact_keys(system, {"fan1_P_kW", "fan2_P_kW", "rotor1", "rotor2"}, "system_params")

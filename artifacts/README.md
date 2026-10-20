@@ -1,7 +1,5 @@
-# 当前运行时模型
+# 最终风量KAN运行时包
 
-此目录仅保存 `kan_xf_single/` 与 `kan_main_single/`。默认全量训练完成后，从 `results/training/<运行编号>/` 提取对应模型安装到这里；完整记录位置见各包 `training_run.json`。
+只放kan_xf_single与kan_main_single，分别10/9输入、固定六输出。模型、scaler和元数据不上传；带外恢复完整包，并按docs/handoff/模型与数据身份.json校验。主项目中已存在这两个最终包，纯源码clone不会附带它们。
 
-2026-09-05 整理时这两个包尚未生成，仿真会如实报缺模型。旧模型已整体迁移至 `archive/artifacts/`，不作为运行时替代。
-
-请从根目录 README 的固定工作流开始，不手工拼接模型文件。
+candidate风量训练不自动安装模型。旧XLS风速包不符合正式运行时，不得拿来替换。精确复现既有包应恢复原权重，不重新训练。安装与结构见docs/handoff/训练流程.md。

@@ -316,17 +316,20 @@ def test_oof_join_rejects_missing_or_wrong_fold_membership(
 
 
 def test_saturation_pressure_matches_water_basis_gold_vector() -> None:
-    """捕获 0℃ 以下误用 Magnus/冰面公式或 0℃ 以上误用过冷水式。"""
+    """饱和压必须与 docs/requirement.txt 企业参考代码逐系数一致。
+
+    2026-09-17：<=0 ℃ 分支由 Murphy–Koop 过冷水公式迁移为企业冰面基准
+    多项式，金标准值重录；>0 ℃ 分支公式未变。
+    """
 
     temperatures = np.array([-75.0, -40.0, -20.0, 0.0, 20.0, 60.0])
-    # Murphy–Koop (supercooled water) / ASHRAE liquid-water reference values, Pa.
     expected = np.array(
         [
-            0.229661156469,
-            18.912149430064,
-            125.504169354940,
-            611.212867451189,
-            2338.803700073981,
+            0.12211935692063862,
+            12.84511625118676,
+            103.25929284812797,
+            611.1470566150772,
+            2338.8037000739814,
             19943.760621620728,
         ]
     )
@@ -339,18 +342,24 @@ def test_saturation_humidity_is_infinite_when_vapor_pressure_reaches_total() -> 
 
     assert math.isinf(saturation_humidity_ratio_g_per_kg(60.0, 10_000.0))
     finite = saturation_humidity_ratio_g_per_kg(20.0, 101_325.0)
-    assert finite == pytest.approx(14.695051649778, rel=2e-10)
+    # 2026-09-17：水汽比对齐企业参考代码 0.62198，重录该金标准。
+    assert finite == pytest.approx(14.695878614876, rel=2e-10)
 
 
 def test_water_basis_dew_point_numerically_inverts_same_saturation_curve() -> None:
-    """露点必须在 -75–60℃ 按同一水面基准反演，不做 Magnus 裁剪。"""
+    """露点换算执行企业 DptAH 表契约（2026-09-17 迁移）。
+
+    露点 > 0 ℃（W > 3.764 g/kg）按同一饱和压公式精确反演；
+    露点 <= 0 ℃ 走 DptAH 表分段线性插值，允许表格固有偏差（< 0.05 ℃）。
+    """
 
     gold_temperatures = np.array([-75.0, -40.0, -20.0, 0.0, 20.0, 60.0])
     humidity = saturation_humidity_ratio_g_per_kg(
         gold_temperatures, 101_325.0
     )
     recovered = dew_point_water_C(humidity, 101_325.0)
-    np.testing.assert_allclose(recovered, gold_temperatures, atol=2e-8, rtol=0.0)
+    np.testing.assert_allclose(recovered[3:], gold_temperatures[3:], atol=1e-6, rtol=0.0)
+    np.testing.assert_allclose(recovered[:3], gold_temperatures[:3], atol=0.05, rtol=0.0)
 
 
 def test_regen_total_water_phase_split_preserves_raw_and_gas_mixing_semantics() -> None:
@@ -359,7 +368,7 @@ def test_regen_total_water_phase_split_preserves_raw_and_gas_mixing_semantics() 
     temperatures = np.array([20.0, 20.0, 20.0])
     total = np.array([-2.0, 10.0, 20.0])
     phase = phase_split_total_water(total, temperatures, 101_325.0)
-    saturation = 14.695051649778
+    saturation = 14.695878614876145  # 2026-09-17：水汽比对齐企业 0.62198 后重录
 
     np.testing.assert_array_equal(phase.total_raw, total)
     np.testing.assert_array_equal(phase.total_nonnegative, [0.0, 10.0, 20.0])
@@ -488,7 +497,7 @@ def test_regen_phase_metric_splits_prediction_and_label_with_fold_train_span() -
         sample_ids=[11, 12],
         pressure_Pa=101_325.0,
     )
-    saturation = 14.695051649778
+    saturation = 14.695878614876145  # 2026-09-17：水汽比对齐企业 0.62198 后重录
     squared = (
         (10.0 - 12.0) ** 2
         + (0.0 - 0.0) ** 2

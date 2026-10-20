@@ -1,22 +1,20 @@
 # ONNX 导出与 Windows DLL 交付
 
-## 交接状态与边界
+## 最终基线与验证边界
 
-本次上传的是可继续开发的源码。没有上传权重、scaler pickle、ONNX、DLL、EXE、NuGet 包、ZIP、仿真结果或历史构建报告。训练/仿真以当前仓库为准；`deployment/dotnet/` 中的 C# 取自主 checkout 活跃源码，是**尚待适配当前 Python 契约的历史迁移基线**。
+本次源码以主项目最终风量 KAN、企业再生混风、DptAH和零补风修复为准。Python/C#的输入、拓扑、物性与默认求解参数已经同步；NuGet业务版本1.0.1。最初上传曾混入旧工作树Python，该基线现已纠正，不应再按“风速Python待追赶C#”接手。
 
-以下差异是实际源码比较结果，不是待确认的猜测。当前 ONNX 导出器复用本仓库训练的 `load_artifact`，会拒绝不匹配的旧 artifact；历史 C# 会拒绝当前风速版 ONNX 输入列。
+| 契约 | Python 与 C# 共同采用 |
+| --- | --- |
+| 输入 | XF 10、main 9列，处理/冷吹量为m³/h |
+| 再生混风 | R1处理量的1/3为目标，R2再生出与R1冷吹出先混合，超量漏风、不足按上限补风 |
+| 低温物性 | T≤0℃冰面多项式，T>0℃液态水，水汽比0.62198 |
+| 露点 | 88项DptAH表，标准压标定、区间插值、低端外推、零湿度干燥极限 |
+| 零补风 | 允许0；不足继续计算并记录warning和shortfall |
+| 求解 | relax=0.8、max_iter=60、T容差1e-4℃、W容差1e-6 g/kg |
+| 留档 | regen_mix_rule、convergence.history、solver_parameters、末次实际输入与残差 |
 
-| 部位 | 当前 Python | 历史 C# 基线 | 接手者需要改动的位置 |
-| --- | --- | --- | --- |
-| XF/main 处理与冷吹特征 | 风速 m/s，直接来自配置 | 风量 m³/h，由边界流量派生 | `OnnxRotor.cs` 列检查、`Components.cs` 输入记录、`Simulator.cs` 输入组装 |
-| 新风再生流量/混风 | R2 再生出 + 配置 RegenOA + R1 冷吹出，三股全量汇合 | 目标为 R1 处理量 1/3，补风/漏风 | `Configuration.cs`、`Simulator.cs`、结果记录和测试 |
-| 低温物性/露点 | Murphy–Koop 过冷水；水汽比 0.621945；实际压力反演 | 冰面多项式；0.62198；低湿 DptAH 标准压表 | `Psychrometrics.cs` 及相关测试 |
-| 再生新风配置 | 正流量 | 可为 0，有缺口告警 | `Configuration.cs`、测试 |
-| 默认求解 | relax 0.55，max_iter 60，T 容差 1e-4℃，W 容差 1e-6 g/kg | relax 0.8，其余相同 | `Contracts.cs` 与测试 |
-| 输出 | 无 `regen_mix_rule` | 有 `regen_mix_rule` | `Contracts.cs`、`Simulator.cs`、`RunRecorder.cs`、验证程序 |
-| 收敛记录 schema | 无 `convergence.history`、`convergence.solver_parameters` | 有逐次历史及求解参数 | 两侧收敛契约、`Contracts.cs`、`Simulator.cs`、留档和测试 |
-
-不要直接把“风速”列名替换成“风量”，它们不是同一物理输入。也不要更换当前 Python 拓扑或物性，使它看起来匹配历史交付。历史 `deployment/dotnet/docs/` 文件已加历史标记，其中日期、版本、迭代次数及通过记录不能作为本次证据。
+源码契约同步不等于跨语言逐位一致。本次需分别记录导出误差、Windows构建/运行、严格迁移和工程验收。历史记录里QY1070有Python12次/C#13次迭代差异，不能因稳态近似就宣称严格迁移通过。部署成品、模型、原始数据和历史运行报告不上传GitHub。
 
 ## 源码入口与工具链
 
@@ -38,7 +36,7 @@ C# 项目使用 .NET 8 SDK，主依赖 `Microsoft.ML.OnnxRuntime 1.20.1`、`Syst
 dotnet build deployment/dotnet/src/Dehumidifier.Simulation/Dehumidifier.Simulation.csproj -c Release
 ```
 
-上述主库编译无需模型。导出与运行测试需要两个与本仓库当前列/架构契约一致的完整 artifact；原始 XLS 和模型应通过独立可信渠道传输到约定目录。缺模型就报错；本次上传不授权全量训练，也不授权从历史模型自动回退。
+上述主库编译无需模型。导出与运行测试需要两台最终风量KAN完整包；精确文件SHA见 `模型与数据身份.json`，模型须带外恢复。重新训练应使用六份尺寸隔离风量CSV，不能使用旧XLS风速入口。缺模型就报错；本次上传不授权全量训练，也不授权从历史模型自动回退。
 
 ## ONNX 的输入输出边界
 
@@ -49,20 +47,20 @@ dotnet build deployment/dotnet/src/Dehumidifier.Simulation/Dehumidifier.Simulati
 ```text
 XF:
 转轮厚度, 转轮直径, 处理入口温度(℃), 入口含湿量(g/kg),
-处理风速(m/s), 冷吹风速(m/s), 转轮转速(rpm), 再生温度(℃),
+处理风量, 冷吹风量, 转轮转速(rpm), 再生温度(℃),
 再生风量, 再生入口含湿量
 
 main:
 转轮厚度, 转轮直径, 入口含湿量(g/kg), 转轮转速(rpm),
 再生温度(℃), 冷吹入口温度(℃), 处理入口温度(℃),
-处理风速(m/s), 冷吹风速(m/s)
+处理风量, 冷吹风量
 
 六个输出:
 处理出口温度, 处理出口含湿量, 冷吹出口温度, 冷吹出口含湿量,
 再生出口温度, 再生出口含湿量
 ```
 
-物理单位：温度 ℃、含湿量 g/kg 干空气、厚度/直径 mm、转速 rpm，风速 m/s；XF 的再生风量 m³/h。两图不能直接接受原始物理量，必须先执行 scaler：
+物理单位：温度 ℃、含湿量 g/kg 干空气、厚度/直径 mm、转速 rpm，处理/冷吹/再生风量 m³/h。两图不能直接接受原始物理量，必须先执行 scaler：
 
 ```text
 x_scaled[i] = x[i] * input_scale[i] + input_min[i]
@@ -71,7 +69,7 @@ y_transformed[j] = (y_scaled[j] - output_min[j]) / output_scale[j]
 其他列：y_physical[j] = y_transformed[j]
 ```
 
-输入与目标 MinMax 范围 `[-1,1]`，`clip=false`，不能静默截断域外输入；只有处理出口含湿量做 log1p/expm1。需复核 double/float32 转换顺序：历史 C# 先把原始输入和系数 cast float32 再乘加，Python/ONNX 导出验证只比较经同一 Python scaler 变换后的图输出，**不覆盖这一跨语言缩放差异**。
+输入与目标 MinMax 范围 `[-1,1]`，`clip=false`，不能静默截断域外输入；只有处理出口含湿量做 log1p/expm1。需复核 double/float32 转换顺序：C# 先把原始输入和系数 cast float32 再乘加，Python/ONNX 导出验证只比较经同一 Python scaler 变换后的图输出，**不覆盖这一跨语言缩放差异**。
 
 露点不是图输出：必须由处理出口含湿量及实际压力调用当前 `dew_point_water_C`。`W=0` 是合法干燥极限，露点为 `-inf`，JSON 存 `null`；不能显示为 0℃。ONNX 中不含 `power`、风机电耗、scaler、表冷/加热、混风、分流或联立迭代。
 
@@ -114,7 +112,7 @@ Copy-Item -Recurse -Force ".\results\deployment\运行编号\onnx" ".\deployment
 .\deployment\dotnet\build.ps1 -Output ".\results\deployment\运行编号_windows"
 ```
 
-目标 `models` 必须事先不存在，否则 Copy-Item 会嵌套 `onnx` 子目录；已有模型暂存时应核对并明确替换六文件。构建脚本拒绝覆盖已存在的输出目录，默认也会分配新的 `results/deployment/` 目录。它依次 restore、build、test、publish 验证程序、publish WinForms、pack NuGet；首次运行要联网还原依赖。`-SkipTests` 仅供源码编译诊断，不能当验证完成。历史 C# 测试含 13 次迭代、企业表与补/漏风断言，适配后必须替换为当前契约及本次数值证据，不能沿用旧断言。
+目标 `models` 必须事先不存在，否则 Copy-Item 会嵌套 `onnx` 子目录；已有模型暂存时应核对并明确替换六文件。构建脚本拒绝覆盖已存在的输出目录，默认也会分配新的 `results/deployment/` 目录。它依次 restore、build、test、publish 验证程序、publish WinForms、pack NuGet；首次运行要联网还原依赖。`-SkipTests` 仅供源码编译诊断，不能当验证完成。C# 测试包含企业表、补/漏风和迭代次数断言；重建必须用真实结果核验，不能改次数或放宽阈值掩盖迁移差异。
 
 `build/Dehumidifier.Simulation.targets` 为 NuGet 消费工程复制模型，必须随源码和主包保留。它不是构建缓存。模型与 `onnxruntime.dll` 等原生依赖必须同程序目录完整部署。
 
@@ -179,13 +177,13 @@ default 工况同样执行。另测 `--max-iter 1` 未收敛、缺模型、非�
 | RH | 1e-4（0–1 比例） |
 | 热负荷 | 1e-2 kW |
 
-状态、分类、缺失/额外字段及数组长度同样需要一致。当前 Python 的收敛记录只有状态、是否收敛、迭代次数、残差、容差和末次实际输入；历史 C# 还保存 `convergence.history`、`convergence.solver_parameters`，因此即使数值相同也会因额外字段严格失败。接手者须先明确统一的收敛记录 schema，并同步两侧实际留档与测试；保留可追溯的真实诊断，不虚构历史、不静默过滤额外字段，也不通过删除比较项来掩盖差异。
+状态、分类、缺失/额外字段及数组长度同样需要一致。两侧均保留 `convergence.history`、`convergence.solver_parameters` 与 `regen_mix_rule`；严格比较不得静默过滤额外字段、丢弃真实历史或删除迭代次数检查。
 
 脚本退出 0 表示严格通过，1 表示完整生成了未通过报告；结果写 `passed`、`strict_migration_passed`。历史出现过两侧迭代数不同，即使稳态近似也必须保留失败；本次没有沿用旧包的通过记录。
 
 ## 自足封装与产物规范
 
-新 `package_delivery.py` 从本次 Windows 构建组装，不依赖历史 ZIP、模板或旧 Windows 证据。它核验 verify/WinForms 携带的六个模型文件与指定导出 SHA-256 全部一致，两处业务 DLL 一致；要求本次 NuGet 主包存在。它**不能证明 DLL 已适配当前 Python，也不能替代 Windows 运行测试**。脚本元数据目前固定标识历史 C# 基线及 `current_python_compatible=false`，适配完成后需用本次测试和审阅更新源码声明。
+新 `package_delivery.py` 从本次 Windows 构建组装，不依赖历史 ZIP、模板或旧 Windows 证据。它核验 verify/WinForms 携带的六个模型文件与指定导出 SHA-256 全部一致，两处业务 DLL 一致；要求本次 NuGet 主包存在。它不能替代Windows运行测试和跨语言数值比较。元数据记录 `source_contract_aligned=true`，`current_python_compatible=requires_current_cross_language_validation`；严格迁移是否通过只取调用者提供的本次报告，不由源码声明推断。
 
 ```bash
 .venv/bin/python deployment/dotnet/package_delivery.py \
@@ -220,6 +218,6 @@ results/deployment/运行编号_delivery/
 
 ## 交接验收顺序
 
-训练/模型精度、部署可加载、严格数值迁移、工程物理验收分别记录。先完成当前 C# 列/拓扑/物性/求解器适配，再验证真实模型导出、Windows 构建与故障行为、逐字段严格迁移；最后由工程人员结合实测检查域外输入、风量参考状态、水分/能量收支、设备性能与联锁。模型误差、测试通过或求解收敛不能代替后续验收。
+训练/模型精度、部署可加载、严格数值迁移、工程物理验收分别记录。恢复已核验的最终风量模型，再验证真实模型导出、Windows构建与故障行为、逐字段严格迁移；最后由工程人员结合实测检查域外输入、风量参考状态、水分/能量收支、设备性能与联锁。模型误差、测试通过或求解收敛不能代替后续验收。
 
 任何生成的模型、构建目录、NuGet 缓存和报告留在本地 `results/deployment/` 或明确的模型暂存目录，不加入源码提交。`src/Dehumidifier.Simulation/build/*.targets` 是源码例外，需要跟踪。

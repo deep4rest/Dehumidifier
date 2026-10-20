@@ -11,14 +11,19 @@
 ========================================
 
     [主转轮冷吹区出] ──→ Heater_Low ──→ [主转轮再生区] ──→ mix ──→ Heater_OA ──→ [新风转轮再生区] ──→ 排放
-                                                               ↑
-                                              再生新风(RegenOA) + 新风转轮冷吹区出
+                                                                ↑
+                                    再生新风(RegenOA，受控补风) + 新风转轮冷吹区出（混合后按需漏风）
 
 说明
 ----
 * 新风转轮（Rotor1）= 预除湿级；主转轮（Rotor2）= 深度除湿级。
 * 主转轮冷吹侧出风流量 ≡ 主转轮再生侧流量（级联约束）。
-* 新风转轮再生侧流量 = 主转轮再生出 + 再生新风 + 新风转轮冷吹出（三股汇合）。
+* 新风转轮再生入口混风执行企业风量规则（2026-09-17）：
+  Heater_OA 入口流量目标 = 新风转轮处理出口流量 / 3。
+  - 主转轮再生出 + 新风转轮冷吹出 ≥ 目标：关闭再生补风，两股完全
+    混合后漏掉超过目标的风量（Heater_OA 入口成分 = 混合成分）。
+  - 可用量 < 目标：按 regen_outdoor_air 补风至目标，补风量以配置
+    流量为上限；补不足时按上限补风并发出告警（入口流量低于目标）。
 * 表冷器（CC1/CC2）保留凝结分支（W_out = min(W_in, W_sat(T_out))）。
   理由：低露点工况处理侧含湿量通常高于设定出口温度对应的饱和含湿量，
   凝结去湿不可忽略，否则下游转轮入口 W 会被严重高估。
@@ -61,6 +66,11 @@ from .components.rotor import Rotor, RotorInputs, RotorOutputs
 # --------------------------------------------------------------------------- #
 # 参数与设定值数据类                                                             #
 # --------------------------------------------------------------------------- #
+
+# m³/h→kg/s 换算引入的浮点噪声量级约 1e-16 kg/s；小于该阈值的风量缺口
+# 视为精确达标，不告警、不记缺口。
+_FLOW_EPS_KG_S = 1e-9
+
 
 @dataclass
 class SystemParams:
@@ -150,6 +160,8 @@ class SystemResult:
         intermediate_states:  关键中间节点的空气状态 {节点名: AirState}。
         rotor1_outputs:       新风转轮 KAN 模型原始预测输出。
         rotor2_outputs:       主转轮 KAN 模型原始预测输出。
+        regen_mix_rule:       再生混风风量规则执行记录（分支、阈值、补风、
+                              漏风与缺口，kg/s 与 m³/h 双单位）。
     """
     supply_state: AirState
     cooling_kW: float
@@ -158,6 +170,7 @@ class SystemResult:
     intermediate_states: Dict[str, AirState]
     rotor1_outputs: RotorOutputs
     rotor2_outputs: RotorOutputs
+    regen_mix_rule: Dict[str, float | str] = field(default_factory=dict)
     convergence: dict = field(default_factory=lambda: {
         "status": "not_evaluated", "converged": None, "iterations": 0,
         "residuals": {}, "tolerances": {},
@@ -185,6 +198,7 @@ class SystemResult:
             "  双转轮系统仿真结果（v2 拓扑修正版）",
             "─" * 60,
             f"  求解状态  : {convergence_label(self.convergence)}",
+            f"  再生混风  : {regen_rule_label(self.regen_mix_rule)}",
             f"  送风状态  : {self.supply_state}",
             f"  送风露点  : {self.supply_state.Tdp:.2f} ℃",
             "",
@@ -226,6 +240,40 @@ def convergence_label(diagnostics: dict) -> str:
     return "未评估收敛性"
 
 
+def regen_rule_label(rule: dict) -> str:
+    """结果摘要与仪表盘共用的再生混风规则文案。"""
+    if not rule:
+        return "未评估"
+    branch = "漏风" if rule.get("branch") == "leak" else "补风"
+    text = (
+        f"{branch}分支｜Heater_OA入口 {float(rule.get('heater_oa_inlet_m3h', 0.0)):.1f} m³/h"
+        f"（目标 {float(rule.get('threshold_m3h', 0.0)):.1f}，"
+        f"补风 {float(rule.get('regen_oa_used_m3h', 0.0)):.1f}，"
+        f"漏风 {float(rule.get('leaked_m3h', 0.0)):.1f}）"
+    )
+    shortfall = float(rule.get("shortfall_m3h", 0.0) or 0.0)
+    if shortfall > 0.0:
+        text += f"，补风不足缺口 {shortfall:.2f} m³/h"
+    return text
+
+
+def _warn_regen_shortfall(result: SystemResult) -> None:
+    """再生补风不足时告警一次（联立求解循环外调用，避免逐次迭代刷屏）。"""
+    rule = result.regen_mix_rule or {}
+    shortfall = float(rule.get("shortfall_kg_da_s", 0.0) or 0.0)
+    if shortfall > 0.0:
+        warnings.warn(
+            "再生补风不足：Heater_OA 入口目标 "
+            f"{float(rule['threshold_kg_da_s']):.6f} kg/s，实际 "
+            f"{float(rule['heater_oa_inlet_kg_da_s']):.6f} kg/s"
+            f"（regen_outdoor_air 配置上限 "
+            f"{float(rule['regen_oa_configured_kg_da_s']):.6f} kg/s），"
+            f"缺口 {shortfall:.6f} kg/s。",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+
 class DualRotorSystem:
     """双转轮低露点除湿机系统模型（v2 稳态前向仿真）。
 
@@ -233,7 +281,8 @@ class DualRotorSystem:
     * 处理侧：OA → Fan1 → CC1 → split(新风转轮冷吹/处理) → 处理侧出+RA混风
               → Fan2 → split(主转轮冷吹/CC2→主转轮处理) → Supply
     * 再生侧：主转轮冷吹出 → Heater_Low → 主转轮再生区
-              → (主转轮再生出 + 再生新风 + 新风转轮冷吹出) → Heater_OA → 新风转轮再生区 → 排放
+              → (主转轮再生出 + 新风转轮冷吹出 完全混合 → 按规则漏风/补风
+              至 R1 处理出口流量的 1/3) → Heater_OA → 新风转轮再生区 → 排放
 
     正式运行由两个 ``Rotor`` 实例分别承载 XF 单 KAN 和 main 单 KAN；历史
     对照代码仍可通过 ``rotor=`` 显式让两级共享同一个模型，但
@@ -316,8 +365,33 @@ class DualRotorSystem:
         m_r2_p  = m_fan2 - m_r2_cb                  # 主转轮处理 = 送风流量
         m_r2_rg = m_r2_cb                            # 主转轮再生（级联约束）
 
-        m_regen_oa = regen_oa_state.mdot             # 再生新风
-        m_r1_rg = m_r2_rg + m_regen_oa + m_r1_cb    # 新风转轮再生（三股汇合）
+        m_regen_oa = regen_oa_state.mdot             # 再生新风（补风可用上限）
+
+        # 企业风量规则（2026-09-17）：新风转轮再生加热器（Heater_OA）入口
+        # 流量目标 = 新风转轮处理出口流量 / 3。
+        #   可用量（主转轮再生出 + 新风转轮冷吹出）>= 目标：关闭补风并漏掉多余；
+        #   可用量 < 目标：按 regen_outdoor_air 补风，补风量以配置流量为上限。
+        m_r1_rg_target = m_r1_p / 3.0
+        m_r1_rg_available = m_r2_rg + m_r1_cb
+        if m_r1_rg_available >= m_r1_rg_target:
+            regen_branch = "leak"
+            m_regen_oa_used = 0.0
+            m_r1_rg_leak = m_r1_rg_available - m_r1_rg_target
+            m_r1_rg = m_r1_rg_target
+            m_r1_rg_shortfall = 0.0
+        else:
+            regen_branch = "make_up"
+            m_regen_oa_used = min(
+                m_r1_rg_target - m_r1_rg_available, m_regen_oa
+            )
+            m_r1_rg_leak = 0.0
+            m_r1_rg = m_r1_rg_available + m_regen_oa_used
+            # 缺口单独计算，避免 (available + deficit) 的浮点噪声误报。
+            m_r1_rg_shortfall = max(
+                0.0, m_r1_rg_target - m_r1_rg_available - m_regen_oa_used
+            )
+            if m_r1_rg_shortfall < _FLOW_EPS_KG_S:
+                m_r1_rg_shortfall = 0.0
 
         if m_r1_cb >= m_oa:
             raise ValueError(
@@ -331,10 +405,12 @@ class DualRotorSystem:
             ("m_r1_p", m_r1_p), ("m_r1_cb", m_r1_cb),
             ("m_r2_p", m_r2_p), ("m_r2_cb", m_r2_cb),
             ("m_r2_rg", m_r2_rg), ("m_r1_rg", m_r1_rg),
-            ("m_fan2", m_fan2), ("m_regen_oa", m_regen_oa),
+            ("m_fan2", m_fan2),
         ]:
             if val <= 0:
                 raise ValueError(f"流量 {name}={val:.6f} kg/s 必须 > 0")
+        if m_regen_oa < 0:
+            raise ValueError(f"流量 m_regen_oa={m_regen_oa:.6f} kg/s 必须 >= 0")
 
         # 记录输入状态；OA 自身 mdot 是唯一的新风总流量来源。
         oa = oa_state
@@ -397,6 +473,8 @@ class DualRotorSystem:
             rotor_thickness=params.rotor1_thickness,
             rotor_diameter=params.rotor1_diameter,
             cool_blow_airspeed=params.rotor1_cool_blow_airspeed,
+            process_flow_m3h=m_r1_p * 3600.0 / _rho_da_oa,
+            cool_blow_flow_m3h=m_r1_cb * 3600.0 / _rho_da_oa,
             regen_flow_m3h=r1_regen_flow_m3h,
             regen_inlet_W=(
                 regen_oa_state.W
@@ -460,6 +538,8 @@ class DualRotorSystem:
             rotor_thickness=params.rotor2_thickness,
             rotor_diameter=params.rotor2_diameter,
             cool_blow_airspeed=params.rotor2_cool_blow_airspeed,
+            process_flow_m3h=m_r2_p * 3600.0 / _rho_da_oa,
+            cool_blow_flow_m3h=m_r2_cb * 3600.0 / _rho_da_oa,
             pressure_Pa=_pressure_pa,
         )
         r2_out: RotorOutputs = self.rotor2.process(r2_inputs)
@@ -486,14 +566,21 @@ class DualRotorSystem:
         states["AfterR2_RG"] = after_r2_rg
 
         # ---------------------------------------------------------------- #
-        # 11. 三股混风：主转轮再生出 + 再生新风 + 新风转轮冷吹出              #
+        # 11. 再生混风（企业风量规则：Heater_OA 入口 = R1 处理出口 / 3）      #
         # ---------------------------------------------------------------- #
-        mixer2a = Mixer(name="Mix2a_RegenOA")
-        mix2a = mixer2a.mix(after_r2_rg, regen_oa_state)   # 主转轮再生出 + 再生新风
-
+        # 先将主转轮再生出与新风转轮冷吹出完全混合：
+        #   leak 分支    —— 关闭补风，混合后漏掉多余风量（成分不变，仅减流量）；
+        #   make_up 分支 —— 追加 regen_outdoor_air 补风（以配置流量为上限）。
         mixer2b = Mixer(name="Mix2b_R1CB")
-        s_oa_heater_in = mixer2b.mix(mix2a, after_r1_cb)   # + 新风转轮冷吹出
-        states["AfterMix3"] = s_oa_heater_in                # 三股混风后
+        regen_mixed = mixer2b.mix(after_r2_rg, after_r1_cb)
+        if regen_branch == "leak":
+            s_oa_heater_in = regen_mixed.at_mdot(m_r1_rg)
+        else:
+            mixer2a = Mixer(name="Mix2a_RegenOA")
+            s_oa_heater_in = mixer2a.mix(
+                regen_mixed, regen_oa_state.at_mdot(m_regen_oa_used)
+            )
+        states["AfterMix3"] = s_oa_heater_in                # Heater_OA 入口
 
         # ---------------------------------------------------------------- #
         # 12. 新风加热器（Heater_OA）：混风后空气 → 新风转轮再生入            #
@@ -516,6 +603,24 @@ class DualRotorSystem:
         # 热量：加热器构造时为正（输入显热）
         heating_kW = energy["Heater_OA_kW"] + energy["Heater_Low_kW"]
 
+        regen_mix_rule = {
+            "rule": "heater_oa_inlet = rotor1_process_outlet / 3",
+            "branch": regen_branch,
+            "threshold_kg_da_s": m_r1_rg_target,
+            "available_kg_da_s": m_r1_rg_available,
+            "regen_oa_configured_kg_da_s": m_regen_oa,
+            "regen_oa_used_kg_da_s": m_regen_oa_used,
+            "leaked_kg_da_s": m_r1_rg_leak,
+            "heater_oa_inlet_kg_da_s": m_r1_rg,
+            "shortfall_kg_da_s": m_r1_rg_shortfall,
+            "shortfall_m3h": m_r1_rg_shortfall * 3600.0 / _rho_da_oa,
+            "threshold_m3h": m_r1_rg_target * 3600.0 / _rho_da_oa,
+            "available_m3h": m_r1_rg_available * 3600.0 / _rho_da_oa,
+            "regen_oa_used_m3h": m_regen_oa_used * 3600.0 / _rho_da_oa,
+            "leaked_m3h": m_r1_rg_leak * 3600.0 / _rho_da_oa,
+            "heater_oa_inlet_m3h": m_r1_rg * 3600.0 / _rho_da_oa,
+        }
+
         return SystemResult(
             supply_state=supply,
             cooling_kW=cooling_kW,
@@ -524,6 +629,7 @@ class DualRotorSystem:
             intermediate_states=states,
             rotor1_outputs=r1_out,
             rotor2_outputs=r2_out,
+            regen_mix_rule=regen_mix_rule,
         )
 
     def simulate_coupled_xf(
@@ -535,7 +641,7 @@ class DualRotorSystem:
         setpoints: ControlSetpoints,
         *,
         max_iter: int = 60,
-        relax: float = 0.55,
+        relax: float = 0.8,
         tol_T_degC: float = 1e-4,
         tol_W_g_per_kg: float = 1e-6,
     ) -> SystemResult:
@@ -564,6 +670,7 @@ class DualRotorSystem:
         r1_W = float(regen_oa_state.W)
         r2_T = float(setpoints.heater_low_T)
         result: SystemResult | None = None
+        history: list[dict] = []
 
         for iteration in range(1, max_iter + 1):
             result = self.simulate(
@@ -594,7 +701,11 @@ class DualRotorSystem:
                 "tolerances": {"T_degC": tol_T_degC, "W_g_per_kg": tol_W_g_per_kg},
                 "last_evaluated_inputs": {"r1_T_degC": r1_T, "r1_W_g_per_kg": r1_W, "r2_T_degC": r2_T},
             }
+            history.append({"iteration": iteration, "inputs": dict(result.convergence["last_evaluated_inputs"]), "residuals": dict(result.convergence["residuals"])})
+            result.convergence["solver_parameters"] = {"relax": relax, "max_iter": max_iter}
+            result.convergence["history"] = list(history)
             if converged:
+                _warn_regen_shortfall(result)
                 return result
             r1_T = r1_T + relax * (new_r1_T - r1_T)
             r1_W = r1_W + relax * (new_r1_W - r1_W)
@@ -606,4 +717,5 @@ class DualRotorSystem:
             RuntimeWarning,
             stacklevel=2,
         )
+        _warn_regen_shortfall(result)
         return result

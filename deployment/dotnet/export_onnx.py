@@ -26,7 +26,8 @@ if str(ROOT / "simulation") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from training.single_kan.model import load_artifact  # noqa: E402
+from training.single_kan.model import Preprocessor  # noqa: E402
+from dual_rotor_sim.core.system.components.rotor import SingleRotorModel  # noqa: E402
 
 
 def sha256(path: Path) -> str:
@@ -43,12 +44,13 @@ def _json_float_list(values: Any) -> list[float]:
 
 def _load(profile: str) -> tuple[torch.nn.Module, Any, dict[str, Any], Path]:
     artifact = ROOT / "artifacts" / f"kan_{profile}_single"
-    # 复用当前训练的元数据/架构/scaler 契约校验，不绕过风量/风速版本边界。
-    model, preprocessor, metadata = load_artifact(artifact, device="cpu")
-    if metadata.get("profile") != profile:
-        raise ValueError(f"{profile} 元数据 profile 与目录不一致")
-    model.eval()
-    return model, preprocessor, metadata, artifact
+    # 正式仿真加载器验证最终风量输入、六输出、架构及 scaler；旧 XLS
+    # load_artifact 仍有历史风速契约，不能作为最终风量包的加载入口。
+    runtime = SingleRotorModel.from_artifact(artifact, profile, device="cpu")
+    import pickle
+    with (artifact / "model/scalers.pkl").open("rb") as stream:
+        preprocessor = Preprocessor.from_state_dict(pickle.load(stream))
+    return runtime.model, preprocessor, runtime.metadata, artifact
 
 
 def _make_samples(profile: str, preprocessor: Any, count: int = 257) -> np.ndarray:

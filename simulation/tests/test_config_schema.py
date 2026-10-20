@@ -137,6 +137,29 @@ def test_schema_rejects_nonpositive_derived_process_flow():
         parse_simulation_config(cfg)
 
 
+def test_schema_allows_zero_regen_makeup_but_rejects_negative_flow():
+    """再生补风是受控上限，允许关闭为零；负流量仍必须拒绝。"""
+    cfg = deepcopy(_validation_config())
+    cfg["regen_outdoor_air"]["flow_m3h"] = 0.0
+
+    parsed = parse_simulation_config(cfg)
+
+    assert parsed.regen_outdoor_air.flow_m3h == 0.0
+    assert parsed.independent_flow_m3h["regen_outdoor_air"] == 0.0
+
+    cfg["regen_outdoor_air"]["flow_m3h"] = -0.1
+    with pytest.raises(ConfigError, match=r"regen_outdoor_air\.flow_m3h 必须 >= 0"):
+        parse_simulation_config(cfg)
+
+
+@pytest.mark.parametrize("stream", ["outdoor_air", "return_air"])
+def test_schema_still_rejects_zero_primary_airflow(stream):
+    cfg = deepcopy(_validation_config())
+    cfg[stream]["flow_m3h"] = 0.0
+    with pytest.raises(ConfigError, match=rf"{stream}\.flow_m3h 必须 > 0"):
+        parse_simulation_config(cfg)
+
+
 def test_default_and_validation_configs_have_distinct_roles_and_exact_flows():
     """默认配置必须保持企业工况，回归配置不得覆盖它。"""
     current = parse_simulation_config(_load_yaml("default_case.yaml"))

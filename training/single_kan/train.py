@@ -632,9 +632,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--validation-interval-steps", type=int, default=None)
     parser.add_argument("--checkpoint-interval-steps", type=int, default=None)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--batch-size", type=int, default=None)
+    parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--device", default=None)
+    parser.add_argument("--dataset-dir", type=Path, default=None, help="尺寸隔离风量 CSV 目录；传入后启用候选 MLP/KAN 流程")
+    parser.add_argument("--model-type", choices=("mlp", "kan", "all"), default="kan", help="候选模型类型")
     parser.add_argument("--resume", type=Path, default=None, help="旧运行目录或 checkpoint；恢复结果写入新目录")
     parser.add_argument("--no-progress", action="store_true", help="关闭 tqdm")
     return parser
@@ -643,6 +645,23 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        if args.dataset_dir is not None or args.model_type != "kan":
+            from .candidate_train import run_candidate_suite
+
+            report = run_candidate_suite(
+                profile=args.profile,
+                model_type=args.model_type,
+                dataset_dir=args.dataset_dir,
+                output_root=args.output_root,
+                batch_size=256 if args.batch_size is None else args.batch_size,
+                seed=20260908 if args.seed is None else args.seed,
+                device="cuda" if args.device is None else args.device,
+                smoke_test=args.smoke_test,
+                max_steps=args.max_steps,
+                confirm_full=args.confirm_full,
+            )
+            print(json.dumps(report, ensure_ascii=False, indent=2, default=_json_default))
+            return 0
         report = run_pipeline(
             profile=args.profile,
             smoke_test=args.smoke_test,
@@ -651,9 +670,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             max_steps=args.max_steps,
             validation_interval_steps=args.validation_interval_steps,
             checkpoint_interval_steps=args.checkpoint_interval_steps,
-            batch_size=args.batch_size,
-            seed=args.seed,
-            device=args.device,
+            batch_size=64 if args.batch_size is None else args.batch_size,
+            seed=42 if args.seed is None else args.seed,
+            device="cpu" if args.device is None else args.device,
             resume=args.resume,
             show_progress=not args.no_progress,
             confirm_full=args.confirm_full,

@@ -145,7 +145,9 @@ def _state_table_rows(
 
 
 def _configure_matplotlib():
-    cache_dir = Path(__file__).resolve().parents[2] / ".tmp" / "matplotlib"
+    cache_dir = Path(os.environ.get(
+        "MPLCONFIGDIR", str(Path(__file__).resolve().parents[2] / ".tmp" / "matplotlib")
+    ))
     cache_dir.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("MPLCONFIGDIR", str(cache_dir))
 

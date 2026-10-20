@@ -31,6 +31,7 @@ def test_snapshot_excludes_history_models_data_and_build_outputs(tmp_path):
     }
     reject = {
         ".git/config", ".claude/settings.json", ".agents/skills/local.md",
+        "simulation/dual_rotor_sim.egg-info/SOURCES.txt",
         "data/dataset.xls", "artifacts/model/metadata.json", "archive/artifacts/model/config.yaml",
         "results/simulation/run/result.json", "training/model.pt", "training/scalers.pkl",
         "deployment/dotnet/src/Simulation/models/model_contract.json",

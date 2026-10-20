@@ -68,6 +68,10 @@ def result_to_dict(result: SystemResult) -> dict[str, Any]:
             key: _json_number(value)
             for key, value in asdict(result.rotor2_outputs).items()
         },
+        "regen_mix_rule": {
+            str(key): (_json_number(value) if isinstance(value, (int, float)) else value)
+            for key, value in result.regen_mix_rule.items()
+        },
     }
 
 
