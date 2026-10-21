@@ -6,7 +6,7 @@
 
 用户确认最终版本为主项目中已同步的Python/C#企业实现：处理/冷吹风量输入、再生目标R1处理量/3的受控补/漏风、DptAH露点和零补风修复。NuGet业务版本1.0.1。最初源码移交误用了旧worktree，现已纠正；禁止再以旧风速/三股全量汇合/过冷水公式覆盖最终版本。
 
-接手先读README、docs/handoff/README.md、训练流程、系统拓扑与物理契约、ONNX与DLL交付。根.venv共用；先git status，保留已有修改，核验实际模型元数据、文件哈希及工况，不能把历史报告当当前证据。
+接手先读README、docs/handoff/README.md、训练流程、系统拓扑与物理契约、ONNX与DLL交付。统一使用Miniconda的dehumidifier环境（Python 3.12），不再使用项目根.venv；执行前conda activate dehumidifier，非交互可用conda run -n dehumidifier。先git status，保留已有修改，核验实际模型元数据、文件哈希及工况，不能把历史报告当当前证据。
 
 ## 训练与数据
 

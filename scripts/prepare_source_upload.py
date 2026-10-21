@@ -12,7 +12,7 @@ import shutil
 
 ROOT_FILES = {
     ".gitignore", "AGENTS.md", "CLAUDE.md", "README.md", "需求.md",
-    "requirements.txt", "pytest.ini",
+    "requirements.txt", "pytest.ini", "environment.yml",
 }
 SOURCE_ROOTS = (
     "training", "simulation", "deployment", "scripts", "docs",

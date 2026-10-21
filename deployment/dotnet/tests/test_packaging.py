@@ -35,7 +35,7 @@ def test_source_copy_preserves_msbuild_targets_and_excludes_generated_assets(tmp
         path.write_text("fixture", encoding="utf-8")
     target = tmp_path / "target"
     package.copy_source(source, target)
-    copied = {str(p.relative_to(target)) for p in target.rglob("*") if p.is_file()}
+    copied = {p.relative_to(target).as_posix() for p in target.rglob("*") if p.is_file()}
     assert copied == {"src/Test/build/Test.targets", "src/Test/Test.cs", "examples/case.json"}
 
 

@@ -24,7 +24,7 @@ def _write(root, name, content="源码示例"):
 def test_snapshot_excludes_history_models_data_and_build_outputs(tmp_path):
     source, target = tmp_path / "repo", tmp_path / "snapshot"
     keep = {
-        "README.md", "data/README.md", "artifacts/README.md", "results/README.md",
+        "README.md", "environment.yml", "data/README.md", "artifacts/README.md", "results/README.md",
         "training/single_kan/train.py", "simulation/configs/case.yaml",
         "deployment/dotnet/src/Simulation/build/Simulation.targets",
         "deployment/dotnet/examples/case.json",
@@ -42,7 +42,7 @@ def test_snapshot_excludes_history_models_data_and_build_outputs(tmp_path):
         _write(source, name)
     report = upload.prepare(source, target)
     assert {item["path"] for item in report["files"]} == keep
-    assert {str(path.relative_to(target)) for path in target.rglob("*") if path.is_file()} == keep
+    assert {path.relative_to(target).as_posix() for path in target.rglob("*") if path.is_file()} == keep
 
 
 def test_snapshot_refuses_nonempty_output(tmp_path):
@@ -52,14 +52,23 @@ def test_snapshot_refuses_nonempty_output(tmp_path):
         upload.prepare(tmp_path / "repo", tmp_path / "snapshot")
 
 
-def test_snapshot_rejects_symlink_and_binary_in_text_files(tmp_path):
+def test_snapshot_rejects_symlink(tmp_path):
     source = tmp_path / "repo"
     _write(source, "README.md")
     (source / "training").mkdir()
-    (source / "training/linked.py").symlink_to(source / "README.md")
+    try:
+        (source / "training/linked.py").symlink_to(source / "README.md")
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("当前 Windows 账号无创建符号链接权限")
+        raise
     with pytest.raises(ValueError, match="符号链接"):
         upload.source_files(source)
-    (source / "training/linked.py").unlink()
+
+
+def test_snapshot_rejects_binary_in_text_files(tmp_path):
+    source = tmp_path / "repo"
+    (source / "training").mkdir(parents=True)
     (source / "training/fake.py").write_bytes(b"not\0source")
     with pytest.raises(ValueError, match="二进制"):
         upload.source_files(source)

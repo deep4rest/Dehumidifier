@@ -9,18 +9,17 @@
 ```bash
 git clone https://github.com/deep4rest/Dehumidifier.git
 cd Dehumidifier
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install -e simulation/
-.venv/bin/python -m pytest -q
+conda env create -f environment.yml
+conda activate dehumidifier
+python -m pytest -q
 ```
 
 GitHub不含数据、权重、scaler、结果和封装成品。按 [模型与数据身份](模型与数据身份.json) 带外恢复两个完整模型包，就可运行仿真和ONNX导出；无需重训。按 [data/README](../../data/README.md) 恢复六份尺寸隔离CSV，才能用最终训练流程。每个文件重新计算SHA-256，不能改列名替换风速/风量。
 
 ```bash
-.venv/bin/dual-rotor-sim simulate --config simulation/configs/qy1070_case.yaml
-.venv/bin/python -m pip install -r deployment/dotnet/requirements-export.txt
-.venv/bin/python deployment/dotnet/export_onnx.py --output results/deployment/新的编号/onnx
+dual-rotor-sim simulate --config simulation/configs/qy1070_case.yaml
+python -m pip install -r deployment/dotnet/requirements-export.txt
+python deployment/dotnet/export_onnx.py --output results/deployment/新的编号/onnx
 ```
 
 只有用户明确授权才可全量训练。默认无dataset-dir的旧XLS入口仍为历史风速流程，不能用于最终运行时。最终CPU smoke见训练文档，candidate不自动安装模型。
@@ -34,7 +33,7 @@ Windows使用.NET 8及ONNX Runtime 1.20.1，实际包版本和工具链应锁定
 ## 纯源码更新
 
 ```bash
-.venv/bin/python scripts/prepare_source_upload.py \
+python scripts/prepare_source_upload.py \
   --output results/source_upload/新的编号/source \
   --manifest results/source_upload/新的编号/manifest.json
 ```

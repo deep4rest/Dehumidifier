@@ -18,16 +18,17 @@
 
 ## 源码入口与工具链
 
-本仓库优先 WSL/Linux 开发 Python，Windows x64 编译和验证 WinForms。推荐 Python 3.11/3.12 新建根 `.venv`；根 `requirements.txt` 是训练/仿真依赖，`deployment/dotnet/requirements-export.txt` 额外安装 `onnx`、`onnxruntime`。Python 版本与 PyTorch/ORT wheel 是否可安装要在目标机核实，不搬运另一台电脑的 `.venv`。
+本仓库使用 Miniconda 的 `dehumidifier` 环境（Python 3.12），Windows x64 编译和验证 WinForms。根 `environment.yml` 安装训练/仿真依赖及 editable 仿真包，`deployment/dotnet/requirements-export.txt` 额外安装 `onnx`、`onnxruntime`。PyTorch/ORT wheel 是否可安装要在目标机核实，不搬运另一台电脑的环境目录。
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r deployment/dotnet/requirements-export.txt
-.venv/bin/python -m pip install -e simulation/
-.venv/bin/python deployment/dotnet/export_onnx.py --help
-.venv/bin/python deployment/dotnet/create_reference.py --help
-.venv/bin/python deployment/dotnet/package_delivery.py --help
-.venv/bin/python -m pytest deployment/dotnet/tests/test_packaging.py -q
+conda env create -f environment.yml
+conda activate dehumidifier
+python -m pip install -r deployment/dotnet/requirements-export.txt
+python -m pip install -e simulation/
+python deployment/dotnet/export_onnx.py --help
+python deployment/dotnet/create_reference.py --help
+python deployment/dotnet/package_delivery.py --help
+python -m pytest deployment/dotnet/tests/test_packaging.py -q
 ```
 
 C# 项目使用 .NET 8 SDK，主依赖 `Microsoft.ML.OnnxRuntime 1.20.1`、`System.Drawing.Common 8.0.0`；xUnit 项目另依赖测试 SDK 17.11.1、xUnit 2.9.2、VS runner 2.8.2。DLL 目标 `net8.0`，WinForms 目标 `net8.0-windows`；图像留档依赖 Windows 的 System.Drawing，不能用 Linux 编译成功代替 Windows 运行验证。
@@ -91,9 +92,9 @@ artifacts/kan_main_single/   同结构
 从仓库根导出到不存在或空目录，`运行编号` 要替换为新的实际标识：
 
 ```bash
-.venv/bin/python deployment/dotnet/export_onnx.py \
+python deployment/dotnet/export_onnx.py \
   --output results/deployment/运行编号/onnx
-.venv/bin/python deployment/dotnet/create_reference.py \
+python deployment/dotnet/create_reference.py \
   --output results/deployment/运行编号/python_reference
 ```
 
@@ -158,7 +159,7 @@ default 工况同样执行。另测 `--max-iter 1` 未收敛、缺模型、非�
 验证程序结果会再建运行子目录。将其实际 JSON/PNG 配对目录**复制保留**到比较暂存目录 `<windows-comparison>/<case>/`，不要移动或修改原始记录。随后在 Python 环境运行：
 
 ```bash
-.venv/bin/python deployment/dotnet/validate_migration.py \
+python deployment/dotnet/validate_migration.py \
   --python-root results/deployment/运行编号/python_reference \
   --csharp-root results/deployment/运行编号/windows-comparison \
   --output results/deployment/运行编号/reports/validation.json
@@ -186,7 +187,7 @@ default 工况同样执行。另测 `--max-iter 1` 未收敛、缺模型、非�
 新 `package_delivery.py` 从本次 Windows 构建组装，不依赖历史 ZIP、模板或旧 Windows 证据。它核验 verify/WinForms 携带的六个模型文件与指定导出 SHA-256 全部一致，两处业务 DLL 一致；要求本次 NuGet 主包存在。它不能替代Windows运行测试和跨语言数值比较。元数据记录 `source_contract_aligned=true`，`current_python_compatible=requires_current_cross_language_validation`；严格迁移是否通过只取调用者提供的本次报告，不由源码声明推断。
 
 ```bash
-.venv/bin/python deployment/dotnet/package_delivery.py \
+python deployment/dotnet/package_delivery.py \
   --build results/deployment/运行编号_windows \
   --models results/deployment/运行编号/onnx \
   --validation-report results/deployment/运行编号/reports/validation.json \

@@ -23,23 +23,24 @@
 
 ## 环境与源码回归
 
-Linux/WSL从仓库根目录执行：
+使用 Miniconda，在仓库根目录执行（Windows、Linux/WSL 通用）：
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pip install -e simulation/
-.venv/bin/python -m pytest -q
+conda env create -f environment.yml
+conda activate dehumidifier
+python -m pytest -q
 ```
 
-没有外部资料时，相应用例明确跳过，合成数据与临时模型测试照常运行。恢复后使用 `REQUIRE_EXTERNAL_FIXTURES=1 .venv/bin/python -m pytest -q -m 'requires_data or requires_models'` 强制外部资料检查。运行环境版本没有全部锁定，不能仅凭相同源码保证跨机逐位一致。
+环境使用 Python 3.12，`environment.yml` 安装根依赖并以 editable 方式安装仿真包；已有环境可用 `conda env update -n dehumidifier -f environment.yml` 更新。非交互执行可用 `conda run -n dehumidifier python ...`，不再创建项目内 `.venv`。需要 NVIDIA GPU 时，按 [PyTorch 官方安装说明](https://pytorch.org/get-started/locally/) 安装与驱动兼容的 CUDA wheel，再验证 `torch.cuda.is_available()`。
+
+没有外部资料时，相应用例明确跳过，合成数据与临时模型测试照常运行。恢复后设置环境变量 `REQUIRE_EXTERNAL_FIXTURES=1`，执行 `python -m pytest -q -m 'requires_data or requires_models'` 强制外部资料检查（PowerShell 用 `$env:REQUIRE_EXTERNAL_FIXTURES='1'`）。运行环境版本没有全部锁定，不能仅凭相同源码保证跨机逐位一致。
 
 ## 最终风量模型的训练
 
 先按 [数据恢复清单](data/README.md) 带外恢复六份尺寸隔离CSV，执行有界CPU smoke：
 
 ```bash
-.venv/bin/python -m training.single_kan.train \
+python -m training.single_kan.train \
   --profile all --model-type kan \
   --dataset-dir data/转轮数据集_尺寸隔离_8比1比1 \
   --device cpu --smoke-test --max-steps 4 --batch-size 256 --seed 20260908
@@ -54,8 +55,8 @@ python3 -m venv .venv
 带外恢复两个完整包 `artifacts/kan_xf_single/`、`artifacts/kan_main_single/` 并按身份清单校验后：
 
 ```bash
-.venv/bin/dual-rotor-sim simulate --config simulation/configs/qy1070_case.yaml
-.venv/bin/python simulation/visualize.py --config simulation/configs/default_case.yaml
+dual-rotor-sim simulate --config simulation/configs/qy1070_case.yaml
+python simulation/visualize.py --config simulation/configs/default_case.yaml
 ```
 
 每次JSON/PNG同目录留档；未收敛仍留调试结果，退出4。改图使用已有JSON重绘，不重算。模型缺失/契约错误直接报错，不自动换历史模型。拓扑、流量、露点与负荷见 [系统契约](docs/handoff/系统拓扑与物理契约.md)。
