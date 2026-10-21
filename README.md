@@ -31,7 +31,17 @@ conda activate dehumidifier
 python -m pytest -q
 ```
 
-环境使用 Python 3.12，`environment.yml` 安装根依赖并以 editable 方式安装仿真包；已有环境可用 `conda env update -n dehumidifier -f environment.yml` 更新。非交互执行可用 `conda run -n dehumidifier python ...`，不再创建项目内 `.venv`。需要 NVIDIA GPU 时，按 [PyTorch 官方安装说明](https://pytorch.org/get-started/locally/) 安装与驱动兼容的 CUDA wheel，再验证 `torch.cuda.is_available()`。
+环境使用 Python 3.12，`environment.yml` 安装根依赖并以 editable 方式安装仿真包；已有环境可用 `conda env update -n dehumidifier -f environment.yml` 更新。非交互执行可用 `conda run -n dehumidifier python ...`，不再创建项目内 `.venv`。
+
+需要 NVIDIA GPU 时，在该环境内安装 CUDA 13.0 版 PyTorch，并验证实际 GPU 计算；驱动兼容性以目标机检查结果为准，其他平台按 [PyTorch 官方安装说明](https://pytorch.org/get-started/locally/) 选择安装包：
+
+```bash
+python -m pip install --upgrade "torch==2.14.1+cu130" --index-url https://download.pytorch.org/whl/cu130
+python -c "import torch; assert torch.cuda.is_available(); print(torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0)); print(torch.ones(2, device='cuda').sum().item())"
+python -m pip check
+```
+
+`environment.yml` 保留通用依赖，重建环境后需再执行 GPU 安装命令。安装或验证 CUDA 环境不代表已授权全量训练。
 
 没有外部资料时，相应用例明确跳过，合成数据与临时模型测试照常运行。恢复后设置环境变量 `REQUIRE_EXTERNAL_FIXTURES=1`，执行 `python -m pytest -q -m 'requires_data or requires_models'` 强制外部资料检查（PowerShell 用 `$env:REQUIRE_EXTERNAL_FIXTURES='1'`）。运行环境版本没有全部锁定，不能仅凭相同源码保证跨机逐位一致。
 

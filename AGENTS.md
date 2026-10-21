@@ -12,6 +12,7 @@
 
 - 最终训练通过 training.single_kan.train **显式 --dataset-dir data/转轮数据集_尺寸隔离_8比1比1**，进入candidate风量流程；CSV三分区已按厚度×直径隔离，不重划、不泄漏。
 - 先相关测试和 --smoke-test --max-steps 4；本次上传/联调不授权全量训练。全量必须用户明确授权并带 --confirm-full。
+- GPU环境安装步骤见README；必须核验实际torch/CUDA版本、设备及GPU计算，不能只凭nvidia-smi判定PyTorch可用。安装GPU依赖不授权全量训练。
 - 六CSV与两模型身份见docs/handoff/模型与数据身份.json；数据只读，每次读取校验SHA-256。旧XLS及NEW数据审阅工具保留作来源追溯；无dataset-dir的旧XLS风速入口不用于最终运行时训练/安装。
 - 原始输入XF10/main9，各固定六输出KAN；power与Excel露点仅审计，不入输入、scaler、loss或输出。处理出口含湿量先log1p，其余目标直变换；scaler仅train拟合。
 - candidate流程不自动安装artifacts；每个候选保存model、checkpoints、reports与运行记录。恢复既有模型优先带外复制完整包，不能混权重/scaler/元数据。candidate尚无已实现的resume入口，不把旧XLS续训规则套用到它。
