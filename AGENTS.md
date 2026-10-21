@@ -29,6 +29,8 @@
 
 ## 保存、部署与验证
 
+- 用户已授权本项目在每次需求完成并通过相关验证后提交并推送到当前工作分支的远程分支；推送前检查diff、暂存清单、分支与上游，仅提交本次需求相关源码及文档。无上游时以同名分支推送origin并设置上游；不强推、不推送全部分支或旧本机历史。推送失败须说明原因，不得声称已同步。
+- 远程提交与分支更新优先使用已连接的GitHub MCP；基于当前远程head创建提交，以expected_sha且force=false更新分支，随后fetch并快进同步本地。MCP认证不代表本机Git已登录，不导出连接凭据。
 - 训练results/training、仿真results/simulation、部署results/deployment、源码移交results/source_upload；长期产物不散落根目录/源码/系统临时目录。JSON/PNG同次同目录；展示调整用save_dashboard_from_record重绘。
 - scaler共用dual_rotor_sim/scalers.py，新pickle只保存原生scaler和普通状态。保留rotor.py历史pickle兼容。training/src与simulation/dual_rotor_sim/core的kan_model.py、preprocessing.py、feature_engineering.py必须逐字节相同，修改双侧同步并md5sum。
 - C#核心为最终版本，不按旧工作树回退；ONNX导出采用正式风量运行时加载器，旧训练load_artifact不适用最终风量候选包。参数/拓扑/物性变更须双侧同步。

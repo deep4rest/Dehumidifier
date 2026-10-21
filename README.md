@@ -64,4 +64,8 @@ ONNX和C#构建见 [部署交接](docs/handoff/ONNX与DLL交付.md)。源码契�
 
 ## 后续源码上传
 
+每次需求完成并通过相关验证后，检查差异和暂存清单，提交本次需求相关源码及文档，再推送到当前工作分支的远程上游。无上游时使用 `git push -u origin <当前分支>`。不强推；推送失败需明确报告。提交者姓名和邮箱通过本仓库的 Git 配置设置。
+
+远程操作优先使用已连接的 GitHub MCP：以当前远程提交为父提交创建新提交，更新分支时检查原 head 且不强推，再 fetch 并快进同步本地。MCP 使用连接账号的提交身份；本机 Git 命令行认证独立配置。
+
 使用 `scripts/prepare_source_upload.py` 白名单生成空目录快照及独立manifest；排除全部数据、模型、结果、构建元数据与缓存。旧本机历史已跟踪模型，禁止直接push --all/--mirror。新GitHub clone可正常提交源码，仍应检查暂存文件。`deployment/dotnet/src/Dehumidifier.Simulation/build/*.targets`是必须保留的源码。
