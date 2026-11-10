@@ -1,12 +1,15 @@
 # ONNX 导出与 Windows DLL 交付
 
+当前新风已升级为9输入、图内Softplus湿度非负头(beta=50)，完整身份与验证边界见[本次升级说明](2026-11-09-新风基线升级.md)。主转轮及整机物理规则保持不变；既有DLL/NuGet不能据此认定已重建。本机未找到dotnet命令，C#本次只核验源码接口。
+
+
 ## 最终基线与验证边界
 
 本次源码以主项目最终风量 KAN、企业再生混风、DptAH和零补风修复为准。Python/C#的输入、拓扑、物性与默认求解参数已经同步；NuGet业务版本1.0.1。最初上传曾混入旧工作树Python，该基线现已纠正，不应再按“风速Python待追赶C#”接手。
 
 | 契约 | Python 与 C# 共同采用 |
 | --- | --- |
-| 输入 | XF 10、main 9列，处理/冷吹量为m³/h |
+| 输入 | XF 9、main 9列，处理/冷吹量为m³/h |
 | 再生混风 | R1处理量的1/3为目标，R2再生出与R1冷吹出先混合，超量漏风、不足按上限补风 |
 | 低温物性 | T≤0℃冰面多项式，T>0℃液态水，水汽比0.62198 |
 | 露点 | 88项DptAH表，标准压标定、区间插值、低端外推、零湿度干燥极限 |
@@ -41,14 +44,14 @@ dotnet build deployment/dotnet/src/Dehumidifier.Simulation/Dehumidifier.Simulati
 
 ## ONNX 的输入输出边界
 
-`export_onnx.py` 只导出 KAN 神经网络图，预处理、逆变换与整机物理模型均在图外。每台图的输入名 `input`、输出名 `output`，数据类型 float32，ONNX opset 17，动态 batch：XF `[batch,10] → [batch,6]`，main `[batch,9] → [batch,6]`。
+`export_onnx.py` 导出 KAN 主体和新风湿度非负头，预处理、逆变换与整机物理模型均在图外。每台图的输入名 `input`、输出名 `output`，数据类型 float32，ONNX opset 17，动态 batch：XF `[batch,9] → [batch,6]`，main `[batch,9] → [batch,6]`。
 
 当前原始物理输入列必须保序：
 
 ```text
 XF:
 转轮厚度, 转轮直径, 处理入口温度(℃), 入口含湿量(g/kg),
-处理风量, 冷吹风量, 转轮转速(rpm), 再生温度(℃),
+处理风量, 冷吹风量, 再生温度(℃),
 再生风量, 再生入口含湿量
 
 main:

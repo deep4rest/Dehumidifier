@@ -1,9 +1,10 @@
 {
-  "schema_version": 1,
-  "baseline": "最终风量KAN及2026-09-19企业混风与DptAH契约",
+  "schema_version": 2,
+  "baseline": "2026-11-09新风9输入Softplus湿度非负KAN；主转轮及企业混风/DptAH契约不变",
   "runtime_models": {
     "xf": {
       "package": "artifacts/kan_xf_single",
+      "baseline_id": "xf-volume9-softplus-b50-20261109",
       "profile": "xf",
       "input_cols": [
         "转轮厚度",
@@ -12,7 +13,6 @@
         "入口含湿量(g/kg)",
         "处理风量",
         "冷吹风量",
-        "转轮转速(rpm)",
         "再生温度(℃)",
         "再生风量",
         "再生入口含湿量"
@@ -32,17 +32,54 @@
         ],
         "grid_size": 6,
         "spline_order": 3,
-        "in_features": 10,
+        "in_features": 9,
         "out_features": 6
       },
+      "output_constraint": {
+        "type": "humidity_softplus_lower_bound",
+        "columns": [
+          "处理出口含湿量",
+          "冷吹出口含湿量",
+          "再生出口含湿量"
+        ],
+        "beta": 50.0,
+        "physical_zero_scaled": [
+          -1.0035581674589764,
+          -1.063227481504687,
+          -1.4092678607538744
+        ],
+        "lower_bound_scaled_fp32": [
+          -1.0035581588745117,
+          -1.0632274150848389,
+          -1.409267783164978
+        ],
+        "boundary_rounding": "ceil_float32",
+        "formula": "z0 + softplus(raw-z0, beta)"
+      },
+      "target_transform": {
+        "log1p_targets": [
+          "处理出口含湿量"
+        ]
+      },
+      "parameter_count": 3600,
+      "source_run": "results/training/20261109_新风湿度非负约束对照/full/20261109_040750_新风_KAN_ca56cefa",
+      "best_epoch": 117,
+      "completed_epochs": 137,
+      "data_fingerprint": "2c028d68e5ecdef889672752f824a102ac9d4f04fc7dcea9d47c7f07ded936d3",
       "files": {
-        "config_snapshot.yaml": "a427d54328168f99778f6b9a7257c09cd3413fd58d7c224ff17119efd73d70c5",
-        "model/best_model.pt": "1bf7ccb2374b96b493867bd261954f1fc7bdece8ad65dc3cad3864dbe1011f9b",
-        "model/metadata.json": "74114ef7b992b224f292ed6ddb362d77d6743b9b1b08a1ce07b46a3fac215d50",
-        "model/scaler_meta.json": "26de9356c269a65ad0e8c096a1a0f9d7803aa8abed614829e4902c1802ed19e2",
-        "model/scalers.pkl": "a523257dda2f56665d9d89714467b6a5ee69e8eeed2646b633ff8da4e3410139",
-        "model_metadata.json": "74114ef7b992b224f292ed6ddb362d77d6743b9b1b08a1ce07b46a3fac215d50",
-        "training_run.json": "5eb6d782da06190789e00bf9a3018a57ec9809083e3a5cab00ad32d65f0ddb9a"
+        "config_snapshot.yaml": "0690017d5a41afc46ef940bdd699e5878c531c962a1a20049988fbb371bf237f",
+        "model/best_model.pt": "3cddc258bbffe3194110d3fff3752070be4f45bdeca18dd3a632798e4c0f35ef",
+        "model/metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
+        "model/scaler_meta.json": "d669a25503d3d74c6b7e5f90aa25851031d63a0022fd169555269a10a7b89d29",
+        "model/scalers.pkl": "0d436af5b1f6b41c963579f44ec8ef215af55ee294a97d9ea65940b79e058f8a",
+        "model_metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
+        "training_run.json": "c8f35687d51ca03ac3aa0f8728831494b75abe228c02fc81399671ca0d3268dc"
+      },
+      "accepted_test_tradeoff": {
+        "process_W_MAE_change_pct": 0.77,
+        "low_W_below_0.01_MAE_change_pct": -62.63,
+        "regen_W_MAE_change_pct": 28.2,
+        "process_W_negative_count": 0
       }
     },
     "main": {
@@ -101,6 +138,71 @@
       "sha256": "d5096d37573f85f275059b8ce636ff928f11aee08c819b6c3192f9ce651b463d",
       "bytes": 450096
     },
+    "data/新风转轮基线_9输入/新风转轮_训练集.csv": {
+      "sha256": "6e942c49c3bdcfb76840e0f44814efe79b3b8096b561817a44b697e2ea6409c4",
+      "bytes": 37088442,
+      "split": "train",
+      "rows": 485041
+    },
+    "data/新风转轮基线_9输入/新风转轮_验证集.csv": {
+      "sha256": "e835432aafbf15264e65e366b5dc3198c80d419e4e0fc5a18039080a772453ff",
+      "bytes": 4336238,
+      "split": "validation",
+      "rows": 57000
+    },
+    "data/新风转轮基线_9输入/新风转轮_测试集.csv": {
+      "sha256": "b60ce559dde3077916bec4030e696f616608d4e2ae1a631c162cefb9752ccf89",
+      "bytes": 4863345,
+      "split": "test",
+      "rows": 63338
+    }
+  },
+  "historical_runtime_models": {
+    "xf_before_20261109": {
+      "package": "artifacts/kan_xf_single",
+      "profile": "xf",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "处理入口温度(℃)",
+        "入口含湿量(g/kg)",
+        "处理风量",
+        "冷吹风量",
+        "转轮转速(rpm)",
+        "再生温度(℃)",
+        "再生风量",
+        "再生入口含湿量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          24
+        ],
+        "grid_size": 6,
+        "spline_order": 3,
+        "in_features": 10,
+        "out_features": 6
+      },
+      "files": {
+        "config_snapshot.yaml": "a427d54328168f99778f6b9a7257c09cd3413fd58d7c224ff17119efd73d70c5",
+        "model/best_model.pt": "1bf7ccb2374b96b493867bd261954f1fc7bdece8ad65dc3cad3864dbe1011f9b",
+        "model/metadata.json": "74114ef7b992b224f292ed6ddb362d77d6743b9b1b08a1ce07b46a3fac215d50",
+        "model/scaler_meta.json": "26de9356c269a65ad0e8c096a1a0f9d7803aa8abed614829e4902c1802ed19e2",
+        "model/scalers.pkl": "a523257dda2f56665d9d89714467b6a5ee69e8eeed2646b633ff8da4e3410139",
+        "model_metadata.json": "74114ef7b992b224f292ed6ddb362d77d6743b9b1b08a1ce07b46a3fac215d50",
+        "training_run.json": "5eb6d782da06190789e00bf9a3018a57ec9809083e3a5cab00ad32d65f0ddb9a"
+      }
+    }
+  },
+  "historical_dataset_files": {
     "data/转轮数据集_尺寸隔离_8比1比1/新风转轮_测试集.csv": {
       "sha256": "9ff688661a3d2f926d714004b7f62d1328adfe1e7f72274266b04271871b3415",
       "bytes": 2227826

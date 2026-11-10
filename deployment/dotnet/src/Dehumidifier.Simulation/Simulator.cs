@@ -180,7 +180,7 @@ public sealed class Simulator : IDisposable
 
     private static RotorOutputs PredictRotor(OnnxRotor model, RotorInputs input, double pressure)
     {
-        var values = model.Predict(model.Profile == "xf" ? new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletTemperatureC, input.ProcessInletHumidityGPerKg, input.ProcessFlowM3H, input.CoolBlowFlowM3H, input.Rpm, input.RegenTemperatureC, input.RegenFlowM3H, input.RegenInletHumidityGPerKg } : new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletHumidityGPerKg, input.Rpm, input.RegenTemperatureC, input.CoolBlowInletTemperatureC, input.ProcessInletTemperatureC, input.ProcessFlowM3H, input.CoolBlowFlowM3H });
+        var values = model.Predict(model.Profile == "xf" ? new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletTemperatureC, input.ProcessInletHumidityGPerKg, input.ProcessFlowM3H, input.CoolBlowFlowM3H, input.RegenTemperatureC, input.RegenFlowM3H, input.RegenInletHumidityGPerKg } : new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletHumidityGPerKg, input.Rpm, input.RegenTemperatureC, input.CoolBlowInletTemperatureC, input.ProcessInletTemperatureC, input.ProcessFlowM3H, input.CoolBlowFlowM3H });
         var processW = Math.Max(0, values[1]); var coolW = Math.Max(0, values[3]); var regenW = Math.Max(0, values[5]);
         return new RotorOutputs(values[0], processW, values[2], coolW, values[4], regenW, double.IsNegativeInfinity(Psychrometrics.DewPointWaterC(processW, pressure)) ? null : Psychrometrics.DewPointWaterC(processW, pressure));
     }

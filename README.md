@@ -2,7 +2,7 @@
 
 当前最终实现采用两台固定六输出**风量 KAN**、企业再生补/漏风规则及DptAH露点表。Python和C#采用同一套业务契约，NuGet业务版本1.0.1。所有Agent先读 [AGENTS.md](AGENTS.md)，再读 [另一台电脑接手入口](docs/handoff/README.md)。
 
-本次源码已包含主项目尚未提交的最终修改；最初GitHub提交里的旧风速Python已纠正。模型、数据、仿真结果、ONNX/DLL/NuGet/ZIP和旧本机Git历史不上传。实际模型与数据身份见 [清单](docs/handoff/模型与数据身份.json)。
+源码包含最终风量仿真实现及2026-11-09新风基线升级；最初GitHub提交里的旧风速Python已纠正。模型、数据、仿真结果、ONNX/DLL/NuGet/ZIP和旧本机Git历史不上传。实际模型与数据身份见 [清单](docs/handoff/模型与数据身份.json)。
 
 ## 目录与入口
 
@@ -45,20 +45,22 @@ python -m pip check
 
 没有外部资料时，相应用例明确跳过，合成数据与临时模型测试照常运行。恢复后设置环境变量 `REQUIRE_EXTERNAL_FIXTURES=1`，执行 `python -m pytest -q -m 'requires_data or requires_models'` 强制外部资料检查（PowerShell 用 `$env:REQUIRE_EXTERNAL_FIXTURES='1'`）。运行环境版本没有全部锁定，不能仅凭相同源码保证跨机逐位一致。
 
-## 最终风量模型的训练
+## 当前新风基线与训练
 
-先按 [数据恢复清单](data/README.md) 带外恢复六份尺寸隔离CSV，执行有界CPU smoke：
+2026-11-09用户已选定**9输入、三个湿度非负输出的KAN**为新风正式基线。主体9→24→6、grid6/order3、3600参数，处理出口含湿量保留log1p/expm1；三个湿度采用参数量为0的Softplus平滑物理下界(beta=50)，温度输出保持原形式。主转轮模型与整机物理契约不变。
+
+本机已安装到`artifacts/kan_xf_single`。GitHub仅提供源码、模型身份和说明，模型/scaler、CSV、训练报告及ONNX必须带外恢复，完整SHA见[身份清单](docs/handoff/模型与数据身份.json)。新风三份CSV固定放在`data/新风转轮基线_9输入`，605,379条及485,041/57,000/63,338的尺寸隔离分区不变。原始转速列仍在审计数据中。
 
 ```bash
 python -m training.single_kan.train \
-  --profile all --model-type kan \
-  --dataset-dir data/转轮数据集_尺寸隔离_8比1比1 \
+  --profile xf --model-type kan \
+  --dataset-dir data/新风转轮基线_9输入 \
   --device cpu --smoke-test --max-steps 4 --batch-size 256 --seed 20260908
 ```
 
-**仅明确获得全量训练授权后**，移除 `--smoke-test --max-steps 4` 并加 `--confirm-full`；CUDA可见时才显式选择 `--device cuda`。`--model-type all`可比较MLP与KAN，正式运行时只接受KAN。每个候选独立留档，候选流程不自动安装artifacts。不要省略 `--dataset-dir`：不传会进入保留的旧XLS风速流程，产物不符合最终风量运行时。
+默认`--humidity-output-constraint auto`会为新风log1p候选启用新基线头；主转轮仍无头。`none`显式重现旧无头对照；`--process-humidity-transform log`仅用于纯log实验。仅明确授权全量训练时才移除smoke参数并增加`--confirm-full --device cuda`。新候选不自动替换正式包，不省略dataset-dir进入旧XLS入口。
 
-详细分区、scaler、优化器、早停、checkpoint、产物和安装步骤见 [训练流程](docs/handoff/训练流程.md)。默认不重新训练，恢复现有完整模型包才能复现既有预测。
+本次选定权重为最佳117轮、137轮早停。测试集处理出口负预测282→0，W<0.01 MAE降低62.63%，整体W MAE增加0.77%；再生出口W MAE增加28.20%的取舍如实保留。[本次修改、结果与验证边界](docs/handoff/2026-11-09-新风基线升级.md)，详细流程见[训练流程](docs/handoff/训练流程.md)。
 
 ## 仿真与部署
 

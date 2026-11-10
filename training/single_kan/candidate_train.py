@@ -111,6 +111,9 @@ def _save_checkpoint(path: Path, *, model: CandidateModel, optimizer: torch.opti
         "best_validation_loss": best_validation_loss,
         "no_improvement_count": int(no_improvement_count),
     }
+    if model.output_constraint_metadata() is not None:
+        payload["schema_version"] = 4
+        payload["output_constraint"] = model.output_constraint_metadata()
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(payload, path)
 
@@ -136,6 +139,7 @@ def train_candidate(
     device: str | torch.device = "cuda",
     smoke_test: bool = False,
     max_steps: int | None = None,
+    humidity_output_constraint: str = "auto",
 ) -> dict[str, Any]:
     """训练一个独立候选并将全部证据写入 ``output_dir``。"""
 
@@ -151,7 +155,13 @@ def train_candidate(
     if target_device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("请求 CUDA，但项目虚拟环境中 CUDA 不可用")
     set_deterministic_seed(seed)
-    model = build_candidate_model(dataset.profile, model_type).to(target_device)
+    if humidity_output_constraint == "auto":
+        humidity_output_constraint = "softplus" if dataset.profile == "xf" and not dataset.preprocessor.target_transform.log_targets else "none"
+    if humidity_output_constraint != "none" and dataset.preprocessor.target_transform.log_targets:
+        raise ValueError("湿度非负输出对照保留log1p目标变换，不能与纯log实验组合")
+    model_kwargs = {"humidity_output_constraint":humidity_output_constraint,
+                    "target_zero_scaled":dataset.preprocessor.target_scaler.min_ if humidity_output_constraint == "softplus" else None}
+    model = build_candidate_model(dataset.profile, model_type, **model_kwargs).to(target_device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=contract.learning_rate, weight_decay=contract.weight_decay)
     train_x = torch.from_numpy(dataset.scaled["train"][0]).to(target_device)
     train_y = torch.from_numpy(dataset.scaled["train"][1]).to(target_device)
@@ -263,7 +273,7 @@ def train_candidate(
         geometries=dataset.frames["test"][["转轮厚度", "转轮直径"]].to_numpy(),
     )
     # Reload the best checkpoint into a fresh model and verify identical test output.
-    reloaded = build_candidate_model(dataset.profile, model_type).to(target_device)
+    reloaded = build_candidate_model(dataset.profile, model_type, **model_kwargs).to(target_device)
     checkpoint_payload = torch.load(checkpoints / "best_model.pt", map_location=target_device, weights_only=False)
     reloaded.load_state_dict(checkpoint_payload["model_state_dict"])
     reloaded_predictions = reloaded.predict(dataset.raw["test"][0], dataset.preprocessor, device=target_device)
@@ -276,22 +286,24 @@ def train_candidate(
     scaler_state = dataset.preprocessor.state_dict()
     with (model_dir / "scalers.pkl").open("wb") as stream:
         pickle.dump(scaler_state, stream, protocol=4)
+    transform_metadata = dataset.preprocessor.target_transform.state_dict()
+    transform_metadata.pop("output_columns")
     _write_json(model_dir / "scaler_meta.json", {
         "input_cols": list(dataset.input_columns),
         "output_cols": list(dataset.output_columns),
-        "log1p_targets": ["处理出口含湿量"],
+        **transform_metadata,
         "feature_range": [-1.0, 1.0],
         "preprocessor_hash": _preprocessor_hash(dataset),
     })
     metadata = {
-        "schema_version": 2,
+        "schema_version": 3 if dataset.preprocessor.target_transform.log_targets else 2,
         "profile": dataset.profile,
         "model_type": model_type,
         "input_cols": list(contract.input_columns),
         "output_cols": list(contract.output_columns),
         "direct_outputs": list(DIRECT_OUTPUT_COLUMNS),
         "derived_outputs": ["处理出口露点"],
-        "target_transform": {"log1p_targets": ["处理出口含湿量"]},
+        "target_transform": transform_metadata,
         "architecture": {
             "name": "MLP" if model_type == "mlp" else "KAN",
             "hidden_widths": list(contract.hidden_widths),
@@ -305,6 +317,9 @@ def train_candidate(
         "file_hashes": dataset.file_hashes,
         "preprocessor_hash": _preprocessor_hash(dataset),
     }
+    if model.output_constraint_metadata() is not None:
+        metadata["schema_version"] = 4
+        metadata["output_constraint"] = model.output_constraint_metadata()
     _write_json(model_dir / "metadata.json", metadata)
     _write_json(output / "model_metadata.json", metadata)
     _write_snapshot(output / "config_snapshot.yaml", metadata)
@@ -349,9 +364,15 @@ def run_candidate_suite(
     smoke_test: bool = False,
     max_steps: int | None = None,
     confirm_full: bool = False,
+    process_humidity_transform: str = "log1p",
+    humidity_output_constraint: str = "auto",
 ) -> dict[str, Any]:
     if not smoke_test and not confirm_full:
         raise ValueError("全量候选训练需要 --confirm-full")
+    if process_humidity_transform == "log" and profile != "xf":
+        raise ValueError("纯log对照实验仅支持 --profile xf")
+    if humidity_output_constraint == "softplus" and (profile != "xf" or process_humidity_transform != "log1p"):
+        raise ValueError("湿度非负输出对照仅支持xf及log1p目标变换")
     profiles = ("xf", "main") if profile == "all" else (str(profile),)
     model_types = ("mlp", "kan") if model_type == "all" else (str(model_type),)
     parent = Path(output_root).resolve() if output_root is not None else TRAINING_RESULTS_DIR.resolve()
@@ -359,7 +380,9 @@ def run_candidate_suite(
     results: dict[str, Any] = {}
     failures: dict[str, str] = {}
     for current_profile in profiles:
-        dataset = load_candidate_dataset(dataset_dir, current_profile)
+        dataset = load_candidate_dataset(
+            dataset_dir, current_profile, process_humidity_transform=process_humidity_transform,
+        )
         for current_model_type in model_types:
             label = "新风" if current_profile == "xf" else "主转轮"
             name = f"{datetime.now().astimezone():%Y%m%d_%H%M%S}_{label}_{current_model_type.upper()}_{uuid.uuid4().hex[:8]}"
@@ -375,6 +398,7 @@ def run_candidate_suite(
                     device=device,
                     smoke_test=smoke_test,
                     max_steps=max_steps,
+                    humidity_output_constraint=("softplus" if current_profile == "xf" and process_humidity_transform == "log1p" else "none") if humidity_output_constraint == "auto" else humidity_output_constraint,
                 )
             except Exception as exc:
                 failures[key] = str(exc)

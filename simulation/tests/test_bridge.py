@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_jsonl_process_recovers_and_preserves_results(tmp_path):
-    if not (ROOT / 'artifacts/kan_xf_single/model/best_model.pt').exists() and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
+    if not all((ROOT / f'artifacts/kan_{p}_single/model/best_model.pt').exists() for p in ('xf','main')) and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
         pytest.skip('本地没有当前 KAN 包')
     config = yaml.safe_load((ROOT / 'simulation/configs/qy1070_case.yaml').read_text())
     requests = [

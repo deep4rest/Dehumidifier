@@ -39,7 +39,8 @@ internal sealed class OnnxRotor : IDisposable
             InputColumns = model.GetProperty("input_cols").EnumerateArray().Select(x => x.GetString()!).ToArray();
             OutputColumns = model.GetProperty("direct_outputs").EnumerateArray().Select(x => x.GetString()!).ToArray();
             _inputCount = InputColumns.Count; _outputCount = OutputColumns.Count;
-            if (_outputCount != 6 || (profile == "xf" && _inputCount != 10) || (profile == "main" && _inputCount != 9)) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 模型输入/输出维度不符合固定契约");
+            if (_outputCount != 6 || _inputCount != 9) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 模型输入/输出维度不符合固定契约");
+            if (profile == "xf" && (!model.TryGetProperty("output_constraint", out var constraint) || constraint.GetProperty("type").GetString() != "humidity_softplus_lower_bound" || constraint.GetProperty("beta").GetDouble() != 50)) throw new SimulationException("MODEL_CONTRACT_INVALID", "新风基线要求图内Softplus湿度非负头(beta=50)");
             ValidateColumns(profile, InputColumns, OutputColumns);
             using var prepDoc = JsonDocument.Parse(File.ReadAllText(preprocessingPath));
             var prep = prepDoc.RootElement.GetProperty("profiles").GetProperty(profile);
@@ -101,7 +102,7 @@ internal sealed class OnnxRotor : IDisposable
     }
     private static void ValidateColumns(string profile, IReadOnlyList<string> inputs, IReadOnlyList<string> outputs)
     {
-        string[] xf = { "转轮厚度", "转轮直径", "处理入口温度(℃)", "入口含湿量(g/kg)", "处理风量", "冷吹风量", "转轮转速(rpm)", "再生温度(℃)", "再生风量", "再生入口含湿量" };
+        string[] xf = { "转轮厚度", "转轮直径", "处理入口温度(℃)", "入口含湿量(g/kg)", "处理风量", "冷吹风量", "再生温度(℃)", "再生风量", "再生入口含湿量" };
         string[] main = { "转轮厚度", "转轮直径", "入口含湿量(g/kg)", "转轮转速(rpm)", "再生温度(℃)", "冷吹入口温度(℃)", "处理入口温度(℃)", "处理风量", "冷吹风量" };
         string[] expected = { "处理出口温度", "处理出口含湿量", "冷吹出口温度", "冷吹出口含湿量", "再生出口温度", "再生出口含湿量" };
         if (!inputs.SequenceEqual(profile == "xf" ? xf : main) || !outputs.SequenceEqual(expected)) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 输入/输出列顺序不符合固定契约");

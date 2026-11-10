@@ -10,12 +10,13 @@
 
 ## 训练与数据
 
-- 最终训练通过 training.single_kan.train **显式 --dataset-dir data/转轮数据集_尺寸隔离_8比1比1**，进入candidate风量流程；CSV三分区已按厚度×直径隔离，不重划、不泄漏。
-- 先相关测试和 --smoke-test --max-steps 4；本次上传/联调不授权全量训练。全量必须用户明确授权并带 --confirm-full。
-- GPU环境安装步骤见README；必须核验实际torch/CUDA版本、设备及GPU计算，不能只凭nvidia-smi判定PyTorch可用。安装GPU依赖不授权全量训练。
-- 六CSV与两模型身份见docs/handoff/模型与数据身份.json；数据只读，每次读取校验SHA-256。旧XLS及NEW数据审阅工具保留作来源追溯；无dataset-dir的旧XLS风速入口不用于最终运行时训练/安装。
-- 原始输入XF10/main9，各固定六输出KAN；power与Excel露点仅审计，不入输入、scaler、loss或输出。处理出口含湿量先log1p，其余目标直变换；scaler仅train拟合。
-- candidate流程不自动安装artifacts；每个候选保存model、checkpoints、reports与运行记录。恢复既有模型优先带外复制完整包，不能混权重/scaler/元数据。candidate尚无已实现的resume入口，不把旧XLS续训规则套用到它。
+- 2026-11-09用户已明确将新风9输入湿度非负KAN提升为正式基线，并授权提交推送GitHub。当前XF9/main9，六输出；新风主体9→24→6、grid6/order3、3600参数，三个湿度共用固定Softplus下界(beta=50)，温度不经过该头。主转轮基线不变。精确包、数据哈希和历史身份见docs/handoff/模型与数据身份.json，升级说明见2026-11-09-新风基线升级.md。
+- 当前新风数据为data/新风转轮基线_9输入中的三份16列CSV（ID+9输入+6输出），共605379条，训练/验证/测试485041/57000/63338；固定厚度×直径隔离，不能重划。原始17列含转速审计文件保留，未删记录。主转轮数据仍用原目录，不修改。
+- 使用training.single_kan.train显式--dataset-dir并--profile xf。默认--humidity-output-constraint auto：xf/log1p启用Softplus，主转轮及纯log对照为none；显式none仅用于旧无头对照。处理出口W仍log1p/expm1，其余目标直接变换；所有scaler仅train拟合，输入无clip。纯log是显式实验，不能与Softplus基线叠加。
+- 非负头代码统一在dual_rotor_sim/output_constraints.py，训练及正式Python加载器复用；物理零点由train scaler.min_推导并向上舍入到float32，禁止任意epsilon、事后abs/clip或对全部负标准化值截零。schema_version=4与output_constraint字段必须完整，拒绝旧10输入或错配头/权重/scaler。
+- 正式新风包为artifacts/kan_xf_single，来自20261109_040750_新风_KAN_ca56cefa最佳117轮（137轮早停）；本次明确提升已安装，以后候选仍不自动安装。ONNX包含非负头，图外仅MinMax/log1p逆变换；C#新风输入9列、移除转速特征，主转轮输入不变。源码升级不代表旧DLL/NuGet自动更新。
+- 先相关测试及--smoke-test --max-steps 4。全量训练仍须明确授权和--confirm-full；本次提升及push不授权再次重训。GPU必须验证实际torch/CUDA计算，不凭nvidia-smi推断。
+- power与Excel露点只审计，不进入输入/scaler/loss/六输出。旧XLS保留追溯，不用于当前基线训练/安装；candidate没有resume入口，不把旧XLS续训规则套用到它。
 
 ## 仿真与物理
 

@@ -54,5 +54,5 @@ def test_preprocessing_contract_has_no_clip_and_log1p_only_on_process_humidity(t
         item = payload["profiles"][profile]
         assert item["clip"] is False
         assert item["log1p_output_columns"] == ["处理出口含湿量"]
-        assert len(item["input_scale"]) == (10 if profile == "xf" else 9)
+        assert len(item["input_scale"]) == 9
         assert len(item["output_scale"]) == 6

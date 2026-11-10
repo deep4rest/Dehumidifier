@@ -35,7 +35,7 @@ def test_qy1070_branch_flows_reach_models(monkeypatch):
     import yaml
     from dual_rotor_sim.config import parse_simulation_config, build_runtime_inputs
     from dual_rotor_sim.core.system.solver import build_system
-    if not (ROOT/'artifacts/kan_xf_single').exists() and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
+    if not all((ROOT/f'artifacts/kan_{p}_single').exists() for p in ('xf','main')) and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
         pytest.skip('本地没有运行时模型')
     system = build_system()
     rt = build_runtime_inputs(parse_simulation_config(yaml.safe_load((ROOT/'simulation/configs/qy1070_case.yaml').read_text())))
@@ -58,7 +58,7 @@ def test_solver_retains_parameters_and_each_raw_residual():
     import yaml
     from dual_rotor_sim.config import parse_simulation_config, build_runtime_inputs
     from dual_rotor_sim.core.system.solver import build_system
-    if not (ROOT/'artifacts/kan_xf_single').exists() and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
+    if not all((ROOT/f'artifacts/kan_{p}_single').exists() for p in ('xf','main')) and os.environ.get('REQUIRE_EXTERNAL_FIXTURES') != '1':
         pytest.skip('本地没有运行时模型')
     rt = build_runtime_inputs(parse_simulation_config(yaml.safe_load((ROOT/'simulation/configs/qy1070_case.yaml').read_text())))
     result = build_system().simulate_coupled_xf(*[rt[k] for k in ('oa','ra','regen_oa','params','setpoints')])

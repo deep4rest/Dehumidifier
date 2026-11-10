@@ -120,10 +120,16 @@ def _fingerprint(
     return digest.hexdigest()
 
 
-def load_candidate_dataset(dataset_dir: str | Path, profile: str) -> CandidateDataset:
+def load_candidate_dataset(
+    dataset_dir: str | Path, profile: str, *, process_humidity_transform: str = "log1p",
+) -> CandidateDataset:
     """加载一个转轮的三份 CSV，并只用训练分区拟合 scaler。"""
 
     profile = str(profile).strip().lower()
+    if process_humidity_transform not in {"log1p", "log"}:
+        raise ValueError("处理出口含湿量变换仅支持 log1p/log")
+    if process_humidity_transform == "log" and profile != "xf":
+        raise ValueError("纯log对照实验仅支持新风xf，主转轮契约不变")
     root = Path(dataset_dir).resolve()
     input_columns = tuple(VOLUME_INPUT_COLUMNS_BY_PROFILE.get(profile, ()))
     if not input_columns:
@@ -167,7 +173,8 @@ def load_candidate_dataset(dataset_dir: str | Path, profile: str) -> CandidateDa
         train_y,
         input_columns,
         DIRECT_OUTPUT_COLUMNS,
-        log1p_targets=("处理出口含湿量",),
+        log1p_targets=("处理出口含湿量",) if process_humidity_transform == "log1p" else (),
+        log_targets=("处理出口含湿量",) if process_humidity_transform == "log" else (),
         fit_ids=frames["train"][ID_COLUMN].tolist(),
     )
     scaled = {

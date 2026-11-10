@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 import torch
 from torch import nn
 
 from training.src.kan_model import build_kan
+from dual_rotor_sim.output_constraints import HumidityNonnegativeHead
 
 from .config import DIRECT_OUTPUT_COLUMNS, VOLUME_INPUT_COLUMNS_BY_PROFILE
 
@@ -53,11 +54,16 @@ def candidate_contract(profile: str, model_type: str) -> CandidateContract:
 
 
 class CandidateModel(nn.Module):
-    def __init__(self, contract: CandidateContract) -> None:
+    def __init__(self, contract: CandidateContract, *, humidity_output_constraint: str = "none",
+                 target_zero_scaled: Sequence[float] | None = None, softplus_beta: float = 50.0) -> None:
         super().__init__()
         self.contract = contract
         self.profile = contract.profile
         self.model_type = contract.model_type
+        if humidity_output_constraint not in {"none", "softplus"}:
+            raise ValueError("湿度输出约束仅支持none/softplus")
+        if humidity_output_constraint == "softplus" and (contract.profile != "xf" or target_zero_scaled is None):
+            raise ValueError("湿度非负对照仅支持有物理零点边界的新风xf")
         if contract.model_type == "kan":
             self.network = build_kan(
                 contract.in_features,
@@ -75,9 +81,15 @@ class CandidateModel(nn.Module):
                 if index < len(widths) - 2:
                     layers.append(nn.SiLU())
             self.network = nn.Sequential(*layers)
+        self.humidity_head = (HumidityNonnegativeHead(contract.output_columns, target_zero_scaled, beta=softplus_beta)
+                              if humidity_output_constraint == "softplus" else None)
 
     def forward(self, features: torch.Tensor) -> torch.Tensor:
-        return self.network(features)
+        raw = self.network(features)
+        return self.humidity_head(raw) if self.humidity_head is not None else raw
+
+    def output_constraint_metadata(self) -> dict[str, Any] | None:
+        return self.humidity_head.metadata() if self.humidity_head is not None else None
 
     @property
     def parameter_count(self) -> int:
@@ -106,5 +118,7 @@ class CandidateModel(nn.Module):
         return preprocessor.inverse_targets(prediction)
 
 
-def build_candidate_model(profile: str, model_type: str) -> CandidateModel:
-    return CandidateModel(candidate_contract(profile, model_type))
+def build_candidate_model(profile: str, model_type: str, *, humidity_output_constraint: str = "none",
+                          target_zero_scaled: Sequence[float] | None = None, softplus_beta: float = 50.0) -> CandidateModel:
+    return CandidateModel(candidate_contract(profile, model_type), humidity_output_constraint=humidity_output_constraint,
+                          target_zero_scaled=target_zero_scaled, softplus_beta=softplus_beta)

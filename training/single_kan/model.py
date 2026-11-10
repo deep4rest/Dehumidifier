@@ -44,24 +44,30 @@ __all__ = [
 
 
 class ReversibleTargetTransform:
-    """按列执行可逆 ``log1p``，严格拒绝目标契约外的列。"""
+    """按列执行可逆 log1p 或显式 opt-in 的纯 log 目标变换。"""
 
     def __init__(
         self,
         *,
         output_columns: Sequence[str],
         log1p_targets: Sequence[str] = (),
+        log_targets: Sequence[str] = (),
     ) -> None:
         self.output_columns = tuple(str(column) for column in output_columns)
         if len(set(self.output_columns)) != len(self.output_columns):
             raise ValueError("目标字段名重复")
         self.log1p_targets = tuple(str(column) for column in log1p_targets)
-        unknown = sorted(set(self.log1p_targets) - set(self.output_columns))
+        self.log_targets = tuple(str(column) for column in log_targets)
+        overlap = set(self.log1p_targets) & set(self.log_targets)
+        if overlap:
+            raise ValueError(f"同一目标不能同时使用 log1p 和 log: {sorted(overlap)}")
+        unknown = sorted((set(self.log1p_targets) | set(self.log_targets)) - set(self.output_columns))
         if unknown:
-            raise ValueError(f"log1p 目标不在六个直接输出中: {unknown}")
+            raise ValueError(f"log 变换目标不在六个直接输出中: {unknown}")
         self.log_indices = tuple(
             self.output_columns.index(column) for column in self.log1p_targets
         )
+        self.natural_log_indices = tuple(self.output_columns.index(column) for column in self.log_targets)
 
     @staticmethod
     def _matrix(values: Any, label: str, columns: int) -> np.ndarray:
@@ -80,6 +86,10 @@ class ReversibleTargetTransform:
                     f"目标列 {self.output_columns[index]} 含负值，无法进行 log1p"
                 )
             matrix[:, index] = np.log1p(matrix[:, index])
+        for index in self.natural_log_indices:
+            if np.any(matrix[:, index] <= 0.0):
+                raise ValueError(f"目标列 {self.output_columns[index]} 必须严格大于0才能进行 log")
+            matrix[:, index] = np.log(matrix[:, index])
         if not np.isfinite(matrix).all():
             raise ValueError("log1p 变换产生非有限值")
         return matrix
@@ -92,15 +102,25 @@ class ReversibleTargetTransform:
                     matrix[:, index] = np.expm1(matrix[:, index])
                 except FloatingPointError as exc:
                     raise ValueError("expm1 反变换产生非有限值") from exc
+        for index in self.natural_log_indices:
+            with np.errstate(over="raise", invalid="raise"):
+                try:
+                    matrix[:, index] = np.exp(matrix[:, index])
+                except FloatingPointError as exc:
+                    raise ValueError("exp 反变换产生非有限值") from exc
         if not np.isfinite(matrix).all():
             raise ValueError("expm1 反变换产生非有限值")
         return matrix
 
     def state_dict(self) -> dict[str, Any]:
-        return {
+        state = {
             "output_columns": list(self.output_columns),
             "log1p_targets": list(self.log1p_targets),
         }
+        # Preserve the exact historical state shape for default log1p packages.
+        if self.log_targets:
+            state["log_targets"] = list(self.log_targets)
+        return state
 
     @classmethod
     def from_state_dict(cls, state: Mapping[str, Any]) -> "ReversibleTargetTransform":
@@ -108,6 +128,7 @@ class ReversibleTargetTransform:
             return cls(
                 output_columns=state["output_columns"],
                 log1p_targets=state.get("log1p_targets", ()),
+                log_targets=state.get("log_targets", ()),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("target transform 状态无效") from exc
@@ -197,7 +218,7 @@ class Preprocessor:
             )
             if tuple(transform.output_columns) != tuple(target_columns):
                 raise ValueError("target_transform 列契约与目标 scaler 不一致")
-            if set(transform.log1p_targets) & set(AUDIT_COLUMNS):
+            if (set(transform.log1p_targets) | set(transform.log_targets)) & set(AUDIT_COLUMNS):
                 raise ValueError("target_transform 不得包含 power 或处理出口露点")
             if set(input_columns) & set(AUDIT_COLUMNS):
                 raise ValueError("input scaler 不得包含 power 或处理出口露点")
@@ -232,6 +253,7 @@ def fit_preprocessor(
     target_columns: Sequence[str],
     *,
     log1p_targets: Sequence[str] = ("处理出口含湿量",),
+    log_targets: Sequence[str] = (),
     fit_ids: Sequence[int] | None = None,
 ) -> Preprocessor:
     """只用训练分区拟合 MinMax 与可逆目标变换。"""
@@ -263,6 +285,7 @@ def fit_preprocessor(
     transform = ReversibleTargetTransform(
         output_columns=outputs,
         log1p_targets=log1p_targets,
+        log_targets=log_targets,
     )
     x_scaler = MinMaxScaler(feature_range=(-1.0, 1.0)).fit(x)
     x_scaler.input_cols = list(inputs)
@@ -270,6 +293,8 @@ def fit_preprocessor(
     y_scaler = MinMaxScaler(feature_range=(-1.0, 1.0)).fit(y_transformed)
     y_scaler.output_cols = list(outputs)
     y_scaler.log_columns = list(transform.log1p_targets)
+    if transform.log_targets:
+        y_scaler.natural_log_columns = list(transform.log_targets)
     return Preprocessor(
         input_columns=inputs,
         target_columns=outputs,
