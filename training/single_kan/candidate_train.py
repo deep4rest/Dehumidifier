@@ -156,7 +156,7 @@ def train_candidate(
         raise RuntimeError("请求 CUDA，但项目虚拟环境中 CUDA 不可用")
     set_deterministic_seed(seed)
     if humidity_output_constraint == "auto":
-        humidity_output_constraint = "softplus" if dataset.profile == "xf" and not dataset.preprocessor.target_transform.log_targets else "none"
+        humidity_output_constraint = "softplus" if not dataset.preprocessor.target_transform.log_targets else "none"
     if humidity_output_constraint != "none" and dataset.preprocessor.target_transform.log_targets:
         raise ValueError("湿度非负输出对照保留log1p目标变换，不能与纯log实验组合")
     model_kwargs = {"humidity_output_constraint":humidity_output_constraint,
@@ -371,8 +371,8 @@ def run_candidate_suite(
         raise ValueError("全量候选训练需要 --confirm-full")
     if process_humidity_transform == "log" and profile != "xf":
         raise ValueError("纯log对照实验仅支持 --profile xf")
-    if humidity_output_constraint == "softplus" and (profile != "xf" or process_humidity_transform != "log1p"):
-        raise ValueError("湿度非负输出对照仅支持xf及log1p目标变换")
+    if humidity_output_constraint == "softplus" and process_humidity_transform != "log1p":
+        raise ValueError("湿度非负输出保留log1p目标变换，不能与纯log实验组合")
     profiles = ("xf", "main") if profile == "all" else (str(profile),)
     model_types = ("mlp", "kan") if model_type == "all" else (str(model_type),)
     parent = Path(output_root).resolve() if output_root is not None else TRAINING_RESULTS_DIR.resolve()
@@ -398,7 +398,7 @@ def run_candidate_suite(
                     device=device,
                     smoke_test=smoke_test,
                     max_steps=max_steps,
-                    humidity_output_constraint=("softplus" if current_profile == "xf" and process_humidity_transform == "log1p" else "none") if humidity_output_constraint == "auto" else humidity_output_constraint,
+                    humidity_output_constraint=("softplus" if process_humidity_transform == "log1p" else "none") if humidity_output_constraint == "auto" else humidity_output_constraint,
                 )
             except Exception as exc:
                 failures[key] = str(exc)

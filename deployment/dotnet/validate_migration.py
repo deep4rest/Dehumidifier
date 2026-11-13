@@ -2,7 +2,7 @@
 """Compare C# result records with the Python reference records.
 
 This checker deliberately compares every saved node, both rotor output records,
-the four thermal terms, totals, and convergence histories.  It does not average
+all six thermal terms, totals, and convergence histories.  It does not average
 away a bad node and it never changes a tolerance to make a run pass.
 """
 

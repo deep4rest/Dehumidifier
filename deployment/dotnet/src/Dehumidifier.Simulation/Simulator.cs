@@ -151,7 +151,15 @@ public sealed class Simulator : IDisposable
         var r2CbIn = beforeFan2.AtFlow(mR2Cb); var cc2In = beforeFan2.AtFlow(mR2P); states["R2_CB_in"] = r2CbIn;
         var cc2 = Components.CoolingCoil(cc2In, c.Cc2OutletC); states["AfterCC2"] = cc2.State; energy["CC2_kW"] = cc2.QKW;
         var r2 = PredictRotor(_main, new RotorInputs(cc2.State.TemperatureC, cc2.State.HumidityGPerKg, r2RegenT, r2CbIn.TemperatureC, c.Rotor2Rpm, p.Rotor2.ThicknessMm, p.Rotor2.DiameterMm, mR2P * 3600 / rho, mR2Cb * 3600 / rho, mR2Cb * 3600 / rho, 0, pressure), pressure);
-        var supply = new AirState(r2.ProcessOutletTemperatureC, r2.ProcessOutletHumidityGPerKg, mR2P, pressure); states["Supply"] = supply; states["AfterR2_CB"] = new AirState(r2.CoolBlowOutletTemperatureC, r2.CoolBlowOutletHumidityGPerKg, mR2Cb, pressure);
+        var afterR2P = new AirState(r2.ProcessOutletTemperatureC, r2.ProcessOutletHumidityGPerKg, mR2P, pressure);
+        states["AfterR2_P"] = afterR2P;
+        var terminal = Components.TerminalConditioning(afterR2P, c.SupplyTemperatureTargetC);
+        var supply = terminal.Supply;
+        states["AfterCC3"] = terminal.AfterCooling;
+        states["Supply"] = supply;
+        energy["CC3_kW"] = terminal.CoolingQKW;
+        energy["Heater_Post_kW"] = terminal.HeatingQKW;
+        states["AfterR2_CB"] = new AirState(r2.CoolBlowOutletTemperatureC, r2.CoolBlowOutletHumidityGPerKg, mR2Cb, pressure);
         var heaterLow = Components.Heater(states["AfterR2_CB"], c.HeaterLowC); states["AfterHeaterLow"] = heaterLow.State; energy["Heater_Low_kW"] = heaterLow.QKW;
         states["AfterR2_RG"] = new AirState(r2.RegenOutletTemperatureC, r2.RegenOutletHumidityGPerKg, mR2Cb, pressure);
         // 再生混风（企业风量规则）：先完全混合 R2 再生出 + R1 冷吹出；
@@ -175,13 +183,15 @@ public sealed class Simulator : IDisposable
             ThresholdM3H: mTarget * 3600 / rho, AvailableM3H: mAvailable * 3600 / rho,
             RegenOaUsedM3H: mRegenOaUsed * 3600 / rho, LeakedM3H: mLeaked * 3600 / rho,
             HeaterOaInletM3H: mR1Rg * 3600 / rho, ShortfallM3H: mShortfall * 3600 / rho);
-        return new SimulationResult { Convergence = new(), Supply = supply, IntermediateStates = states, Rotor1Outputs = r1, Rotor2Outputs = r2, CoolingLoadKW = Math.Abs(cc1.QKW) + Math.Abs(cc2.QKW), HeatingLoadKW = heaterOa.QKW + heaterLow.QKW, EnergyBreakdownKW = energy, RegenMixRule = regenMixRule, Warnings = warnings };
+        return new SimulationResult { Convergence = new(), Supply = supply, IntermediateStates = states, Rotor1Outputs = r1, Rotor2Outputs = r2, CoolingLoadKW = Math.Abs(cc1.QKW) + Math.Abs(cc2.QKW) + Math.Abs(terminal.CoolingQKW), HeatingLoadKW = heaterOa.QKW + heaterLow.QKW + terminal.HeatingQKW, EnergyBreakdownKW = energy, RegenMixRule = regenMixRule, Warnings = warnings };
     }
 
     private static RotorOutputs PredictRotor(OnnxRotor model, RotorInputs input, double pressure)
     {
         var values = model.Predict(model.Profile == "xf" ? new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletTemperatureC, input.ProcessInletHumidityGPerKg, input.ProcessFlowM3H, input.CoolBlowFlowM3H, input.RegenTemperatureC, input.RegenFlowM3H, input.RegenInletHumidityGPerKg } : new[] { input.ThicknessMm, input.DiameterMm, input.ProcessInletHumidityGPerKg, input.Rpm, input.RegenTemperatureC, input.CoolBlowInletTemperatureC, input.ProcessInletTemperatureC, input.ProcessFlowM3H, input.CoolBlowFlowM3H });
-        var processW = Math.Max(0, values[1]); var coolW = Math.Max(0, values[3]); var regenW = Math.Max(0, values[5]);
+        var processW = values[1]; var coolW = values[3]; var regenW = values[5];
+        if (processW < 0 || coolW < 0 || regenW < 0)
+            throw new SimulationException("MODEL_OUTPUT_INVALID", $"{model.Profile} 图内非负头逆变换后产生负含湿量，拒绝以事后截零掩盖模型契约错误");
         return new RotorOutputs(values[0], processW, values[2], coolW, values[4], regenW, double.IsNegativeInfinity(Psychrometrics.DewPointWaterC(processW, pressure)) ? null : Psychrometrics.DewPointWaterC(processW, pressure));
     }
 

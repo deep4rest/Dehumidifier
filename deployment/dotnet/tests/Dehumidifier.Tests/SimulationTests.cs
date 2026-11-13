@@ -68,10 +68,10 @@ public sealed class SimulationTests
     }
 
     [Fact]
-    public void AssemblyVersionDistinguishesTheEnterpriseFixPackage()
+    public void AssemblyVersionDistinguishesTheV2SixLoadPackage()
     {
         var version = typeof(Simulator).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        Assert.StartsWith("1.0.1", version);
+        Assert.StartsWith("2.0.0", version);
     }
 
     [Fact]
@@ -100,12 +100,15 @@ public sealed class SimulationTests
         using var simulator = new Simulator(models, results);
         var result = await simulator.SimulateAsync(config);
         Assert.True(result.Converged);
-        // 2026-09-17 Windows ONNX 实测为 13 次；Python/PyTorch 基准为 12 次。
-        // 此断言固定当前 Windows 行为；两侧迭代差异由迁移报告单独保留。
-        Assert.Equal(13, result.Iterations);
+        // v2正式Softplus模型2026-11-13 Windows ONNX实测17次，PyTorch为18次。
+        // 旧模型13次断言及本次首次失败记录保留在本次evidence/build日志中。
+        // 这里只冻结当前DLL行为；严格迁移仍独立报告18/17差异，未放宽门槛。
+        Assert.Equal(17, result.Iterations);
         Assert.True(File.Exists(result.ResultJsonPath));
         Assert.True(File.Exists(result.DashboardPngPath));
-        Assert.Equal(4, result.EnergyBreakdownKW.Count);
+        Assert.Equal(6, result.EnergyBreakdownKW.Count);
+        Assert.Equal(0.0, result.EnergyBreakdownKW["CC3_kW"]);
+        Assert.Equal(0.0, result.EnergyBreakdownKW["Heater_Post_kW"]);
         // 企业风量规则：qy1070 走补风分支，Heater_OA 入口 = R1 处理出口 / 3 = 1111 m³/h。
         Assert.NotNull(result.RegenMixRule);
         Assert.Equal("make_up", result.RegenMixRule!.Branch);

@@ -40,9 +40,9 @@ internal static class RunRecorder
         }
     }
 
-    private static object ToRecord(SimulationResult result)
+    internal static object ToRecord(SimulationResult result)
     {
-        var energy = result.EnergyBreakdownKW.Where(x => x.Key is "CC1_kW" or "CC2_kW" or "Heater_Low_kW" or "Heater_OA_kW").ToDictionary(x => x.Key, x => x.Value);
+        var energy = result.EnergyBreakdownKW.Where(x => x.Key is "CC1_kW" or "CC2_kW" or "CC3_kW" or "Heater_Low_kW" or "Heater_OA_kW" or "Heater_Post_kW").ToDictionary(x => x.Key, x => x.Value);
         return new
         {
             convergence = result.Convergence,
@@ -102,7 +102,7 @@ internal static class RunRecorder
 
     private static void WriteDashboard(SimulationResult result, string path)
     {
-        using var bitmap = new Bitmap(1600, 1000, PixelFormat.Format24bppRgb);
+        using var bitmap = new Bitmap(1600, 1160, PixelFormat.Format24bppRgb);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.Clear(Color.White);
         using var title = new Font("Microsoft YaHei", 22, FontStyle.Bold);
@@ -116,8 +116,8 @@ internal static class RunRecorder
         graphics.DrawString($"送风：T={result.Supply.TemperatureC:F3} ℃，W={result.Supply.HumidityGPerKg:F5} g/kg，露点={(result.Supply.DewPointOrNull is null ? "干燥极限" : result.Supply.DewPointOrNull.Value.ToString("F3"))} ℃，RH={result.Supply.RelativeHumidityFraction:P2}", body, black, 48, 125);
         graphics.DrawString($"总冷负荷：{result.CoolingLoadKW:F5} kW    总热负荷：{result.HeatingLoadKW:F5} kW", body, black, 48, 170);
         graphics.DrawString("处理侧关键节点", body, blue, 48, 235);
-        var names = new[] { "OA", "AfterCC1", "AfterR1_P", "BeforeFan2", "AfterCC2", "Supply" };
-        var labels = new[] { "新风入口", "表冷1后", "转轮1处理出", "混风后", "表冷2后", "送风出口" };
+        var names = new[] { "OA", "AfterCC1", "AfterR1_P", "BeforeFan2", "AfterCC2", "AfterR2_P", "AfterCC3", "Supply" };
+        var labels = new[] { "新风入口", "表冷1后", "转轮1处理出", "混风后", "表冷2后", "主轮处理出", "后表冷后", "送风出口" };
         var y = 280;
         for (var i = 0; i < names.Length; i++)
         {
@@ -125,13 +125,13 @@ internal static class RunRecorder
             graphics.DrawString($"{labels[i],-10} T={state.TemperatureC,8:F3} ℃  W={state.HumidityGPerKg,10:F5} g/kg  Tdp={(double.IsNegativeInfinity(state.DewPointC) ? "干燥极限" : state.DewPointC.ToString("F3")),10} ℃  RH={state.RelativeHumidityFraction,7:P2}", small, black, 60, y);
             y += 42;
         }
-        graphics.DrawString("热负荷明细", body, orange, 48, 560);
-        y = 610;
-        foreach (var key in new[] { "CC1_kW", "CC2_kW", "Heater_Low_kW", "Heater_OA_kW" })
+        graphics.DrawString("热负荷明细", body, orange, 48, 650);
+        y = 700;
+        foreach (var key in new[] { "CC1_kW", "CC2_kW", "CC3_kW", "Heater_Low_kW", "Heater_OA_kW", "Heater_Post_kW" })
         {
             if (result.EnergyBreakdownKW.TryGetValue(key, out var value)) { graphics.DrawString($"{key,-18} {value,12:F6} kW", body, black, 70, y); y += 40; }
         }
-        graphics.DrawString("本图用于部署/数值迁移验证；不代表工程物理验收。", small, orange, 48, 900);
+        graphics.DrawString("本图用于部署/数值迁移验证；不代表工程物理验收。", small, orange, 48, 1100);
         bitmap.Save(path, ImageFormat.Png);
     }
 }

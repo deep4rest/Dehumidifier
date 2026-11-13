@@ -44,6 +44,9 @@ def test_exported_onnx_contract_matches_current_artifacts(tmp_path: Path):
     for item in contract["models"]:
         assert item["verification"]["nonfinite_count"] == 0
         assert item["verification"]["max_abs_physical"] < 1e-3
+        assert item["output_constraint"]["type"] == "humidity_softplus_lower_bound"
+        assert item["output_constraint"]["beta"] == 50.
+        assert item["output_constraint"]["columns"] == ["处理出口含湿量","冷吹出口含湿量","再生出口含湿量"]
 
 
 def test_preprocessing_contract_has_no_clip_and_log1p_only_on_process_humidity(tmp_path: Path):

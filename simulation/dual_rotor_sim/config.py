@@ -43,6 +43,7 @@ class ControlConfig:
     heater_oa_T_degC: float
     rotor1_rpm: float
     rotor2_rpm: float
+    supply_T_target_degC: float | None = None
 
 
 @dataclass(frozen=True)
@@ -261,12 +262,18 @@ def parse_simulation_config(raw: Mapping[str, Any]) -> SimulationConfig:
         "rotor1_rpm",
         "rotor2_rpm",
     }
-    _exact_keys(control, control_keys, "control_setpoints")
+    allowed_control_keys = control_keys | ({"supply_T_target_degC"} if "supply_T_target_degC" in control else set())
+    _exact_keys(control, allowed_control_keys, "control_setpoints")
+    target = control.get("supply_T_target_degC")
+    if target is not None:
+        target = _number(target, "control_setpoints.supply_T_target_degC")
+        if target <= -273.15:
+            raise ConfigError("送风温度目标必须高于绝对零度")
     control_setpoints = ControlConfig(
         **{
             key: _number(control[key], f"control_setpoints.{key}")
             for key in control_keys
-        }
+        }, supply_T_target_degC=target
     )
     if control_setpoints.rotor1_rpm <= 0 or control_setpoints.rotor2_rpm <= 0:
         raise ConfigError("配置字段 control_setpoints.rotor1_rpm/rotor2_rpm 必须 > 0")
@@ -360,5 +367,6 @@ def build_runtime_inputs(parsed: SimulationConfig) -> dict[str, Any]:
             heater_oa_T=control.heater_oa_T_degC,
             rotor1_rpm=control.rotor1_rpm,
             rotor2_rpm=control.rotor2_rpm,
+            supply_T_target=control.supply_T_target_degC,
         ),
     }

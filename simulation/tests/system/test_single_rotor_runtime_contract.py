@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
+from sklearn.preprocessing import MinMaxScaler
 
 from dual_rotor_sim.core.kan_model import build_kan
 from dual_rotor_sim.core.system.air_state import AirState
@@ -22,6 +23,8 @@ from dual_rotor_sim.core.system.psychrometrics import dew_point_water_C
 from dual_rotor_sim.core.system.solver import build_system
 from dual_rotor_sim.core.system.system import SystemResult
 from dual_rotor_sim.run_records import result_to_dict
+from dual_rotor_sim.output_constraints import HumidityConstrainedModel
+from dual_rotor_sim.scalers import TargetScalerAdapter
 
 
 XF_INPUTS = [
@@ -64,20 +67,6 @@ MAIN_OUTPUTS = [
 ]
 
 
-class IdentityScaler:
-    """测试用可逆缩放器，避免把运行时测试绑定到训练实现。"""
-
-    def __init__(self, columns, role):
-        setattr(self, "input_cols" if role == "input" else "output_cols", list(columns))
-        self.n_features_in_ = len(columns)
-
-    def transform(self, values):
-        return np.asarray(values, dtype=np.float32)
-
-    def inverse_transform(self, values):
-        return np.asarray(values, dtype=np.float32)
-
-
 def _write_artifact(
     root: Path,
     *,
@@ -97,13 +86,22 @@ def _write_artifact(
         grid_size=grid_size,
         spline_order=3,
     )
+    x_scaler = MinMaxScaler(feature_range=(-1,1)).fit(np.array([[0]*len(input_cols),[1]*len(input_cols)],dtype=float))
+    x_scaler.input_cols = list(input_cols)
+    targets = np.array([[16,.01,27,.1,60,5],[25,1.,80,3.,100,20]],dtype=float)
+    targets[:,1] = np.log1p(targets[:,1])
+    y_scaler = MinMaxScaler(feature_range=(-1,1)).fit(targets)
+    y_scaler.output_cols = list(direct_outputs)
+    model = HumidityConstrainedModel(model,direct_outputs,y_scaler.min_,beta=50.)
     torch.save(model.state_dict(), model_dir / "best_model.pt")
     with (model_dir / "scalers.pkl").open("wb") as stream:
         pickle.dump(
-            {"x_scaler": IdentityScaler(input_cols, "input"), "y_scaler": IdentityScaler(direct_outputs, "output")},
+            {"x_scaler": x_scaler, "y_scaler": TargetScalerAdapter(y_scaler,direct_outputs,["处理出口含湿量"])},
             stream,
         )
     metadata = {
+        "schema_version": 4,
+        "output_constraint": model.humidity_head.metadata(),
         "profile": profile,
         "input_cols": input_cols,
         "output_cols": direct_outputs,
@@ -122,6 +120,39 @@ def _write_artifact(
         json.dumps(metadata, ensure_ascii=False), encoding="utf-8"
     )
     return root
+
+
+@pytest.mark.parametrize("profile", ["xf","main"])
+def test_single_artifact_rejects_missing_or_mismatched_humidity_head(tmp_path,profile):
+    artifact = _write_artifact(tmp_path/profile,profile=profile)
+    path = artifact/"model_metadata.json"
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    metadata["output_constraint"]["beta"] = 1.
+    path.write_text(json.dumps(metadata,ensure_ascii=False),encoding="utf-8")
+    with pytest.raises(RuntimeError,match="非负头元数据"):
+        SingleRotorModel.from_artifact(artifact,profile)
+    metadata.pop("output_constraint")
+    metadata["schema_version"] = 2
+    path.write_text(json.dumps(metadata,ensure_ascii=False),encoding="utf-8")
+    with pytest.raises(RuntimeError,match="schema_version=4"):
+        SingleRotorModel.from_artifact(artifact,profile)
+
+
+def test_main_artifact_rejects_mismatched_scaler_zero_and_unheaded_weights(tmp_path):
+    artifact = _write_artifact(tmp_path/"main",profile="main")
+    scaler_path = artifact/"model/scalers.pkl"
+    original = scaler_path.read_bytes()
+    scalers = pickle.loads(original)
+    scalers["y_scaler"].scaler.min_[1] += .001
+    scaler_path.write_bytes(pickle.dumps(scalers))
+    with pytest.raises(RuntimeError,match="scaler物理零点"):
+        SingleRotorModel.from_artifact(artifact,"main")
+    scaler_path.write_bytes(original)
+    checkpoint = artifact/"model/best_model.pt"
+    state = torch.load(checkpoint,weights_only=True)
+    torch.save({key:value for key,value in state.items() if not key.startswith("humidity_head.")},checkpoint)
+    with pytest.raises(RuntimeError,match="checkpoint.*不匹配"):
+        SingleRotorModel.from_artifact(artifact,"main")
 
 
 def _sample_inputs() -> RotorInputs:
@@ -246,6 +277,8 @@ def test_public_result_and_json_have_only_thermal_load_fields():
         "CC2_kW",
         "Heater_Low_kW",
         "Heater_OA_kW",
+        "CC3_kW",
+        "Heater_Post_kW",
     }
     document = result_to_dict(result)
     assert "electrical_kW" not in json.dumps(document, ensure_ascii=False)

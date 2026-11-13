@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "baseline": "2026-11-09新风9输入Softplus湿度非负KAN；主转轮及企业混风/DptAH契约不变",
+  "baseline": "两台9输入六输出KAN均采用Softplus湿度非负头(beta=50)；新风2026-11-09、主转轮2026-11-10；整机原工况均数值收敛，温度超域与水汽守恒仍待工程验证",
   "runtime_models": {
     "xf": {
       "package": "artifacts/kan_xf_single",
@@ -115,14 +115,78 @@
         "out_features": 6
       },
       "files": {
-        "config_snapshot.yaml": "d35ee969035fd40bdf84bee3a9194d8240dca9e16049639d26c13d7fbb3cb4f3",
-        "model/best_model.pt": "4138ef7deee4d351618e91f7afe2c11eece75cc16bef875737e5f50567b0dfa0",
-        "model/metadata.json": "ac13e5c60b0bda83a82c5d9c5082ae00c3b70eeac4d3fab31a83a787eb514f56",
-        "model/scaler_meta.json": "5a95cb09ddbb19dff051ee3f7328bc28822df35a82ca6dcc66e2bfdec1638918",
-        "model/scalers.pkl": "e580029e865fa77698ffe1e0f3fe9942fa6423391b3419f341faaa07b2959f4c",
-        "model_metadata.json": "ac13e5c60b0bda83a82c5d9c5082ae00c3b70eeac4d3fab31a83a787eb514f56",
-        "training_run.json": "9f68c62e610657c6f9c136f252cb1703431c152cc3382232471b02d297842fd0"
-      }
+        "config_snapshot.yaml": "102f5238b33588a4086215d83dea7bba0ffc4827533f77101fce94157cfdd76b",
+        "model_metadata.json": "a100fc9520434bc92e3ebecb2582610e12ae4ea209a99d96bdb848936655b522",
+        "training_run.json": "2354413bbaff8ab90eaffdc3a25f4ae7a46d36d031c5f1e59af1f58095d85510",
+        "model/best_model.pt": "5bbf124573997dad65c66d1127af00386d6ca56e5033cc39ace54d70d644908b",
+        "model/metadata.json": "a100fc9520434bc92e3ebecb2582610e12ae4ea209a99d96bdb848936655b522",
+        "model/scalers.pkl": "228b7260634fd8ad1a78664f5dac8f466adad9f31696c8abb34ba9c977aade0a",
+        "model/scaler_meta.json": "7e08b03f06132398250ed1bc46a0fc87af39095b6a5b1f0631672d226bb0ebcb"
+      },
+      "baseline_id": "main-volume9-softplus-b50-20261110",
+      "purpose": "user-requested humidity Softplus solution; raw nonnegative verified; temperature coverage and physical conservation still need engineering validation",
+      "source_run": "results/training/20261110_主转轮Softplus非负约束/full/20261110_004354_主转轮_KAN_8ed80727",
+      "parameter_count": 2160,
+      "best_epoch": 199,
+      "completed_epochs": 200,
+      "rows": {
+        "train": 47991,
+        "validation": 6232,
+        "test": 6384
+      },
+      "raw_test_negative_humidity": {
+        "处理出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 2.369226049738236e-07
+        },
+        "冷吹出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 1.0330458292688876e-05
+        },
+        "再生出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 0.1313726160954937
+        }
+      },
+      "test_process_W_MAE_g_kg": 0.0031803703735576584,
+      "not_identical_to_historical_weights": true,
+      "output_constraint": {
+        "type": "humidity_softplus_lower_bound",
+        "columns": [
+          "处理出口含湿量",
+          "冷吹出口含湿量",
+          "再生出口含湿量"
+        ],
+        "beta": 50.0,
+        "physical_zero_scaled": [
+          -1.0064658890042657,
+          -1.0118869396740038,
+          -1.0447744711889726
+        ],
+        "lower_bound_scaled_fp32": [
+          -1.0064657926559448,
+          -1.0118868350982666,
+          -1.0447744131088257
+        ],
+        "boundary_rounding": "ceil_float32",
+        "formula": "z0 + softplus(raw-z0, beta)"
+      },
+      "target_transform": {
+        "log1p_targets": [
+          "处理出口含湿量"
+        ]
+      },
+      "optimizer": {
+        "name": "AdamW",
+        "learning_rate": 0.001,
+        "weight_decay": 0.0,
+        "batch_size": 256,
+        "seed": 20260908
+      },
+      "data_fingerprint": "9a01c9568bc8d7c3b80fa0eea0650375efa0b510650eaca38733df12a4f4c584"
     }
   },
   "dataset_files": {
@@ -200,6 +264,121 @@
         "model_metadata.json": "74114ef7b992b224f292ed6ddb362d77d6743b9b1b08a1ce07b46a3fac215d50",
         "training_run.json": "5eb6d782da06190789e00bf9a3018a57ec9809083e3a5cab00ad32d65f0ddb9a"
       }
+    },
+    "main_before_20261110": {
+      "package": "artifacts/kan_main_single",
+      "profile": "main",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "入口含湿量(g/kg)",
+        "转轮转速(rpm)",
+        "再生温度(℃)",
+        "冷吹入口温度(℃)",
+        "处理入口温度(℃)",
+        "处理风量",
+        "冷吹风量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          16
+        ],
+        "grid_size": 5,
+        "spline_order": 3,
+        "in_features": 9,
+        "out_features": 6
+      },
+      "files": {
+        "config_snapshot.yaml": "d35ee969035fd40bdf84bee3a9194d8240dca9e16049639d26c13d7fbb3cb4f3",
+        "model/best_model.pt": "4138ef7deee4d351618e91f7afe2c11eece75cc16bef875737e5f50567b0dfa0",
+        "model/metadata.json": "ac13e5c60b0bda83a82c5d9c5082ae00c3b70eeac4d3fab31a83a787eb514f56",
+        "model/scaler_meta.json": "5a95cb09ddbb19dff051ee3f7328bc28822df35a82ca6dcc66e2bfdec1638918",
+        "model/scalers.pkl": "e580029e865fa77698ffe1e0f3fe9942fa6423391b3419f341faaa07b2959f4c",
+        "model_metadata.json": "ac13e5c60b0bda83a82c5d9c5082ae00c3b70eeac4d3fab31a83a787eb514f56",
+        "training_run.json": "9f68c62e610657c6f9c136f252cb1703431c152cc3382232471b02d297842fd0"
+      }
+    },
+    "main_unconstrained_20261110": {
+      "package": "artifacts/kan_main_single",
+      "profile": "main",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "入口含湿量(g/kg)",
+        "转轮转速(rpm)",
+        "再生温度(℃)",
+        "冷吹入口温度(℃)",
+        "处理入口温度(℃)",
+        "处理风量",
+        "冷吹风量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          16
+        ],
+        "grid_size": 5,
+        "spline_order": 3,
+        "in_features": 9,
+        "out_features": 6
+      },
+      "files": {
+        "config_snapshot.yaml": "0c06049a9ae565db269c7746222548cbaae1dbe26868b3cc1c1e64006481def4",
+        "model_metadata.json": "55d846795170c69c6a333045c1892cd7752f7833a4ee70dd807765f54a52842a",
+        "training_run.json": "7caebd3aa2fc66df3bff9febf974635da1905dd82742ead96b0ee47b317df0e8",
+        "model/best_model.pt": "b5c15ba99246ddb7c5d7f4d2615538ba28193bf761086279a6bef1bdf67e3042",
+        "model/metadata.json": "55d846795170c69c6a333045c1892cd7752f7833a4ee70dd807765f54a52842a",
+        "model/scalers.pkl": "228b7260634fd8ad1a78664f5dac8f466adad9f31696c8abb34ba9c977aade0a",
+        "model/scaler_meta.json": "7e08b03f06132398250ed1bc46a0fc87af39095b6a5b1f0631672d226bb0ebcb"
+      },
+      "baseline_id": "main-volume9-retrained-20261110",
+      "purpose": "user-authorized retraining for system topology verification; engineering acceptance not passed",
+      "source_run": "results/training/20261110_主转轮重训与整机验证/full/20261110_001321_主转轮_KAN_732b51e4",
+      "parameter_count": 2160,
+      "best_epoch": 199,
+      "completed_epochs": 200,
+      "rows": {
+        "train": 47991,
+        "validation": 6232,
+        "test": 6384
+      },
+      "raw_test_negative_humidity": {
+        "处理出口含湿量": {
+          "count": 260,
+          "ratio": 0.040726817042606514,
+          "minimum": -0.012142214514198875
+        },
+        "冷吹出口含湿量": {
+          "count": 5,
+          "ratio": 0.0007832080200501253,
+          "minimum": -0.0704053361529896
+        },
+        "再生出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 0.14766035416503623
+        }
+      },
+      "test_process_W_MAE_g_kg": 0.0032427275463700624,
+      "not_identical_to_historical_weights": true,
+      "local_backup": "results/training/20261110_主转轮Softplus非负约束/baseline_unconstrained_package"
     }
   },
   "historical_dataset_files": {

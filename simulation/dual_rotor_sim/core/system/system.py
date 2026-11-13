@@ -5,7 +5,7 @@
 
     OA ──→ Fan1 ──→ CC1 ──→ ┬──→ [新风转轮冷吹区]  ─────────────────────────────────┐
                               └──→ [新风转轮处理区]  ──→ mix(RA) ──→ Fan2 ──→ ┬──→ [主转轮冷吹区]         │
-                                                                                └──→ CC2 ──→ [主转轮处理区] ──→ Supply
+                                                                                └──→ CC2 ──→ [主转轮处理区] ──→ CC3 ──→ Heater_Post ──→ Supply
 
 再生侧拓扑（级联换热，右→左走再生路径）
 ========================================
@@ -31,10 +31,10 @@
 
 能耗汇总语义（单 KAN 运行时契约）
 -----------------------
-energy_breakdown 仅公开 4 项，单位均为 kW（稳态热负荷率，非累计能量）：
+energy_breakdown 公开 6 项，单位均为 kW（稳态热负荷率，非累计能量）：
 
-    cooling_kW     = |CC1| + |CC2|       # 表冷器焓差冷负荷
-    heating_kW     = Heater_OA + Heater_Low  # 加热器焓差热负荷
+    cooling_kW     = |CC1| + |CC2| + |CC3|  # 表冷器焓差冷负荷
+    heating_kW     = Heater_OA + Heater_Low + Heater_Post  # 加热器焓差热负荷
 
 关键边界与隐含假设：
 
@@ -61,6 +61,7 @@ from .components.heater import Heater
 from .components.fan import Fan
 from .components.mixer import Mixer
 from .components.rotor import Rotor, RotorInputs, RotorOutputs
+from .components.terminal import condition_supply
 
 
 # --------------------------------------------------------------------------- #
@@ -135,6 +136,7 @@ class ControlSetpoints:
     heater_oa_T: float = 120.0    # ℃
     rotor1_rpm: float = 5.0       # rpm
     rotor2_rpm: float = 6.0       # rpm（主转轮训练数据恒定值）
+    supply_T_target: float | None = None  # 缺省时末端旁通；优化必须给定
 
 
 # --------------------------------------------------------------------------- #
@@ -154,9 +156,9 @@ class SystemResult:
 
     Attributes:
         supply_state:         送风口空气状态（T、W、Tdp、h、RH）。
-        cooling_kW:           系统冷负荷 (kW)：|CC1| + |CC2|，正值为带走的总热量。
-        heating_kW:           系统热负荷 (kW)：Heater_OA + Heater_Low，正值为输入的显热。
-        energy_breakdown:     四个热工组件明细 {CC1/CC2/Heater_Low/Heater_OA: kW}。
+        cooling_kW:           系统冷负荷 (kW)：|CC1| + |CC2| + |CC3|，正值为带走的总热量。
+        heating_kW:           系统热负荷 (kW)：Heater_OA + Heater_Low + Heater_Post，正值为输入的显热。
+        energy_breakdown:     六个热工组件明细 {CC1/CC2/CC3/Heater_Low/Heater_OA/Heater_Post: kW}。
         intermediate_states:  关键中间节点的空气状态 {节点名: AirState}。
         rotor1_outputs:       新风转轮 KAN 模型原始预测输出。
         rotor2_outputs:       主转轮 KAN 模型原始预测输出。
@@ -181,7 +183,7 @@ class SystemResult:
     # contains fan or rotor-motor terms; normalize that boundary here so those
     # terms cannot leak into JSON, dashboards, or downstream records.
     _PUBLIC_THERMAL_KEYS: ClassVar[frozenset[str]] = frozenset(
-        {"CC1_kW", "CC2_kW", "Heater_Low_kW", "Heater_OA_kW"}
+        {"CC1_kW", "CC2_kW", "CC3_kW", "Heater_Low_kW", "Heater_OA_kW", "Heater_Post_kW"}
     )
 
     def __post_init__(self) -> None:
@@ -190,6 +192,8 @@ class SystemResult:
             for name, value in self.energy_breakdown.items()
             if str(name) in self._PUBLIC_THERMAL_KEYS
         }
+        for name in ("CC1_kW", "CC2_kW", "CC3_kW", "Heater_Low_kW", "Heater_OA_kW", "Heater_Post_kW"):
+            self.energy_breakdown.setdefault(name, 0.)
 
     def summary(self) -> str:
         """返回可打印的结果摘要字符串。"""
@@ -203,8 +207,8 @@ class SystemResult:
             f"  送风露点  : {self.supply_state.Tdp:.2f} ℃",
             "",
             "  热工负荷汇总:",
-            f"    冷  量   : {self.cooling_kW:>10.3f} kW   (|CC1|+|CC2|)",
-            f"    热  量   : {self.heating_kW:>10.3f} kW   (Heater_OA+Heater_Low)",
+            f"    冷  量   : {self.cooling_kW:>10.3f} kW   (|CC1|+|CC2|+|CC3|)",
+            f"    热  量   : {self.heating_kW:>10.3f} kW   (Heater_OA+Heater_Low+Heater_Post)",
             "",
             "  热工组件明细 (kW):",
         ]
@@ -279,7 +283,7 @@ class DualRotorSystem:
 
     拓扑与 `需求.md` 完全对应：
     * 处理侧：OA → Fan1 → CC1 → split(新风转轮冷吹/处理) → 处理侧出+RA混风
-              → Fan2 → split(主转轮冷吹/CC2→主转轮处理) → Supply
+              → Fan2 → split(主转轮冷吹/CC2→主转轮处理) → CC3 → Heater_Post → Supply
     * 再生侧：主转轮冷吹出 → Heater_Low → 主转轮再生区
               → (主转轮再生出 + 新风转轮冷吹出 完全混合 → 按规则漏风/补风
               至 R1 处理出口流量的 1/3) → Heater_OA → 新风转轮再生区 → 排放
@@ -544,7 +548,11 @@ class DualRotorSystem:
         )
         r2_out: RotorOutputs = self.rotor2.process(r2_inputs)
 
-        supply = AirState(T=r2_out.process_outlet_T, W=r2_out.process_outlet_W, mdot=m_r2_p, pressure_Pa=params.pressure_Pa)
+        after_r2_p = AirState(T=r2_out.process_outlet_T, W=r2_out.process_outlet_W, mdot=m_r2_p, pressure_Pa=params.pressure_Pa)
+        after_cc3, supply, terminal_energy = condition_supply(after_r2_p, setpoints.supply_T_target)
+        energy.update(terminal_energy)
+        states["AfterR2_P"] = after_r2_p
+        states["AfterCC3"] = after_cc3
         after_r2_cb = AirState(T=r2_out.cool_blow_outlet_T, W=r2_out.cool_blow_outlet_W, mdot=m_r2_cb, pressure_Pa=params.pressure_Pa)
         states["Supply"]      = supply
         states["AfterR2_CB"]  = after_r2_cb
@@ -599,9 +607,9 @@ class DualRotorSystem:
         # 汇总热工负荷                                                       #
         # ================================================================ #
         # 冷量：表冷器构造时为负（散热出系统），取绝对值得到冷负荷量级
-        cooling_kW = abs(energy["CC1_kW"]) + abs(energy["CC2_kW"])
+        cooling_kW = sum(abs(energy[k]) for k in ("CC1_kW", "CC2_kW", "CC3_kW"))
         # 热量：加热器构造时为正（输入显热）
-        heating_kW = energy["Heater_OA_kW"] + energy["Heater_Low_kW"]
+        heating_kW = sum(energy[k] for k in ("Heater_OA_kW", "Heater_Low_kW", "Heater_Post_kW"))
 
         regen_mix_rule = {
             "rule": "heater_oa_inlet = rotor1_process_outlet / 3",

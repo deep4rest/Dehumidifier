@@ -18,8 +18,10 @@ RESULTS_DIR = Path(__file__).resolve().parents[2] / "results" / "simulation"
 _PUBLIC_ENERGY_KEYS = {
     "CC1_kW",
     "CC2_kW",
+    "CC3_kW",
     "Heater_Low_kW",
     "Heater_OA_kW",
+    "Heater_Post_kW",
 }
 
 

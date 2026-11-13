@@ -62,8 +62,8 @@ class CandidateModel(nn.Module):
         self.model_type = contract.model_type
         if humidity_output_constraint not in {"none", "softplus"}:
             raise ValueError("湿度输出约束仅支持none/softplus")
-        if humidity_output_constraint == "softplus" and (contract.profile != "xf" or target_zero_scaled is None):
-            raise ValueError("湿度非负对照仅支持有物理零点边界的新风xf")
+        if humidity_output_constraint == "softplus" and target_zero_scaled is None:
+            raise ValueError("湿度非负输出需要目标scaler的物理零点边界")
         if contract.model_type == "kan":
             self.network = build_kan(
                 contract.in_features,

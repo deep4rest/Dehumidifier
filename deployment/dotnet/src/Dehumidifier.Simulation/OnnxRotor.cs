@@ -40,7 +40,7 @@ internal sealed class OnnxRotor : IDisposable
             OutputColumns = model.GetProperty("direct_outputs").EnumerateArray().Select(x => x.GetString()!).ToArray();
             _inputCount = InputColumns.Count; _outputCount = OutputColumns.Count;
             if (_outputCount != 6 || _inputCount != 9) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 模型输入/输出维度不符合固定契约");
-            if (profile == "xf" && (!model.TryGetProperty("output_constraint", out var constraint) || constraint.GetProperty("type").GetString() != "humidity_softplus_lower_bound" || constraint.GetProperty("beta").GetDouble() != 50)) throw new SimulationException("MODEL_CONTRACT_INVALID", "新风基线要求图内Softplus湿度非负头(beta=50)");
+            if (!model.TryGetProperty("output_constraint", out var constraint) || constraint.GetProperty("type").GetString() != "humidity_softplus_lower_bound" || constraint.GetProperty("beta").GetDouble() != 50) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 基线要求图内Softplus湿度非负头(beta=50)");
             ValidateColumns(profile, InputColumns, OutputColumns);
             using var prepDoc = JsonDocument.Parse(File.ReadAllText(preprocessingPath));
             var prep = prepDoc.RootElement.GetProperty("profiles").GetProperty(profile);

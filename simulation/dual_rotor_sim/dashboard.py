@@ -23,11 +23,19 @@ _PROCESS_PATH_NODES = [
     ("Supply", "送风出口"),
 ]
 
+_TERMINAL_PROCESS_PATH_NODES = _PROCESS_PATH_NODES[:-1] + [
+    ("AfterR2_P", "主转轮处理出"),
+    ("AfterCC3", "后表冷后"),
+    ("Supply", "后加热后/送风"),
+]
+
 _ENERGY_NAMES = {
     "CC1_kW": "前表冷器",
     "CC2_kW": "中表冷器",
+    "CC3_kW": "后表冷器",
     "Heater_Low_kW": "主转轮再生加热",
     "Heater_OA_kW": "新风转轮再生加热",
+    "Heater_Post_kW": "送风后加热",
 }
 _PUBLIC_ENERGY_KEYS = tuple(_ENERGY_NAMES)
 
@@ -80,12 +88,21 @@ def _dashboard_air_state_from_record(
 def _public_energy_breakdown(
     breakdown: Mapping[str, Any],
 ) -> dict[str, float]:
-    """固定顺序提取四个热工负荷，拒绝旧风机和转轮电机字段。"""
+    """提取六个热工负荷；历史四负荷记录照旧，不恢复电功率字段。"""
     return {
         key: float(breakdown[key])
         for key in _PUBLIC_ENERGY_KEYS
         if key in breakdown
     }
+
+
+def _process_path_nodes(
+    states: Mapping[str, _DashboardAirState],
+) -> list[tuple[str, str]]:
+    """按实际记录选择路径，不能给历史记录虚构末端状态。"""
+    if "AfterR2_P" in states or "AfterCC3" in states:
+        return _TERMINAL_PROCESS_PATH_NODES
+    return _PROCESS_PATH_NODES
 
 
 def _dashboard_payload_from_result(result: SystemResult) -> _DashboardPayload:
@@ -126,7 +143,7 @@ def _state_table_rows(
 ) -> list[list[str]]:
     """生成六列表格行；流量不属于图片展示契约。"""
     rows: list[list[str]] = []
-    for key, label in _PROCESS_PATH_NODES:
+    for key, label in _process_path_nodes(states):
         state = states.get(key)
         if state is None:
             rows.append([label, "—", "—", "—", "—", "—"])
@@ -199,6 +216,24 @@ def _config_value(
     return values.get(key, default) if isinstance(values, dict) else default
 
 
+def _terminal_summary(payload: _DashboardPayload, config: dict[str, Any]) -> str:
+    """清楚区分再生加热和末端自动调温，并保留旧记录的真实范围。"""
+    target = _config_value(config, "control_setpoints", "supply_T_target_degC", None)
+    has_terminal = (
+        "AfterR2_P" in payload.intermediate_states
+        or "AfterCC3" in payload.intermediate_states
+        or "CC3_kW" in payload.energy_breakdown
+        or "Heater_Post_kW" in payload.energy_breakdown
+    )
+    if not has_terminal:
+        return "历史记录：未包含末端后表冷/后加热"
+    if target is None:
+        return "送风温度目标未设置；末端后表冷、后加热旁通"
+    cooler = "开" if payload.energy_breakdown.get("CC3_kW", 0.) != 0. else "关"
+    heater = "开" if payload.energy_breakdown.get("Heater_Post_kW", 0.) != 0. else "关"
+    return f"送风目标 {target}℃；末端后表冷：{cooler}，后加热：{heater}"
+
+
 def _style_table(table: Any, *, header_color: str = "#4c72b0") -> None:
     """统一表头与交替行样式，提升高分辨率图片的可读性。"""
     for (row, _column), cell in table.get_celld().items():
@@ -229,6 +264,9 @@ def _save_dashboard_payload(
     supply = payload.supply_state
     states = payload.intermediate_states
     breakdown = payload.energy_breakdown
+    path_nodes = _process_path_nodes(states)
+    has_terminal = path_nodes is _TERMINAL_PROCESS_PATH_NODES
+    terminal_summary = _terminal_summary(payload, config)
 
     oa_t = _config_value(config, "outdoor_air", "T_degC", "—")
     oa_w = _config_value(config, "outdoor_air", "W_g_per_kg", "—")
@@ -239,11 +277,12 @@ def _save_dashboard_payload(
         config, "control_setpoints", "heater_oa_T_degC", "—"
     )
 
-    fig = plt.figure(figsize=(18, 13.5), facecolor="white")
+    fig = plt.figure(figsize=(18, 14.8 if has_terminal else 13.5), facecolor="white")
     fig.suptitle(
         f"双转轮除湿机单工况仿真结果 · {payload.solver_label}\n"
         f"新风 {oa_t}℃ / {oa_w} g/kg；"
-        f"主转轮/新风转轮再生加热 {heater_low}/{heater_oa}℃",
+        f"主转轮/新风转轮再生加热 {heater_low}/{heater_oa}℃\n"
+        f"{terminal_summary}",
         fontsize=14,
         fontweight="bold",
         y=0.985,
@@ -253,7 +292,7 @@ def _save_dashboard_payload(
         3,
         3,
         figure=fig,
-        height_ratios=[0.90, 1.20, 0.85],
+        height_ratios=[0.95, 1.20, 1.05 if has_terminal else 0.85],
         hspace=0.34,
         wspace=0.30,
     )
@@ -285,10 +324,12 @@ def _save_dashboard_payload(
         payload.cooling_kW,
         payload.heating_kW,
     ]
+    group_labels.append("冷热合计")
+    group_values.append(payload.cooling_kW + payload.heating_kW)
     bars = ax_group.bar(
         group_labels,
         group_values,
-        color=["#55a868", "#c44e52"],
+        color=["#55a868", "#c44e52", "#8172b2"],
         width=0.62,
     )
     ax_group.bar_label(bars, fmt="%.2f", fontsize=9)
@@ -303,7 +344,7 @@ def _save_dashboard_payload(
     bars = ax_energy.barh(
         labels,
         values,
-        color=["#c44e52" if value >= 0 else "#4c72b0" for value in values],
+        color=["#4c72b0" if key.startswith("CC") else "#c44e52" for key in breakdown],
         height=0.62,
     )
     ax_energy.axvline(0, color="black", linewidth=0.8)
@@ -314,8 +355,8 @@ def _save_dashboard_payload(
     ax_energy.grid(axis="x", alpha=0.25)
     ax_energy.margins(x=0.12)
 
-    path_states = [states.get(key) for key, _label in _PROCESS_PATH_NODES]
-    x_values = np.arange(len(_PROCESS_PATH_NODES))
+    path_states = [states.get(key) for key, _label in path_nodes]
+    x_values = np.arange(len(path_nodes))
     temperatures = [state.T if state else np.nan for state in path_states]
     dew_points = [state.Tdp if state else np.nan for state in path_states]
     humidities = [state.W if state else np.nan for state in path_states]
@@ -327,7 +368,7 @@ def _save_dashboard_payload(
     ax_path.set_ylabel("温度 (℃)")
     ax_path.set_xticks(x_values)
     ax_path.set_xticklabels(
-        [label for _key, label in _PROCESS_PATH_NODES],
+        [label for _key, label in path_nodes],
         rotation=22,
         ha="right",
         fontsize=8,

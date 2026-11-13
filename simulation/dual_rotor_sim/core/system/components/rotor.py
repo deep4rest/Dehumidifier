@@ -596,16 +596,16 @@ class SingleRotorModel:
             grid_size=architecture["grid_size"],
             spline_order=architecture["spline_order"],
         )
-        if profile == "xf":
-            constraint = metadata.get("output_constraint")
-            if metadata.get("schema_version") != 4 or not isinstance(constraint, Mapping):
-                raise RuntimeError("新风运行时基线要求schema_version=4的湿度非负头")
-            if log_columns != {"处理出口含湿量"}:
-                raise RuntimeError("新风基线必须使用处理出口含湿量log1p变换")
-            target_scaler = getattr(y_scaler, "scaler", y_scaler)
-            model = HumidityConstrainedModel(model, direct_outputs, target_scaler.min_, beta=50.0)
-            if model.humidity_head.metadata() != constraint:
-                raise RuntimeError("湿度非负头元数据与scaler物理零点或固定beta不一致")
+        profile_label = "新风" if profile == "xf" else "主转轮"
+        constraint = metadata.get("output_constraint")
+        if metadata.get("schema_version") != 4 or not isinstance(constraint, Mapping):
+            raise RuntimeError(f"{profile_label}运行时基线要求schema_version=4的湿度非负头")
+        if log_columns != {"处理出口含湿量"}:
+            raise RuntimeError(f"{profile_label}基线必须使用处理出口含湿量log1p变换")
+        target_scaler = getattr(y_scaler, "scaler", y_scaler)
+        model = HumidityConstrainedModel(model, direct_outputs, target_scaler.min_, beta=50.0)
+        if model.humidity_head.metadata() != constraint:
+            raise RuntimeError("湿度非负头元数据与scaler物理零点或固定beta不一致")
         try:
             state_dict = torch.load(model_path, map_location=device, weights_only=True)
         except TypeError:  # torch < 2.6

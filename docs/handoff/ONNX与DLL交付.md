@@ -1,6 +1,10 @@
 # ONNX 导出与 Windows DLL 交付
 
-当前新风已升级为9输入、图内Softplus湿度非负头(beta=50)，完整身份与验证边界见[本次升级说明](2026-11-09-新风基线升级.md)。主转轮及整机物理规则保持不变；既有DLL/NuGet不能据此认定已重建。本机未找到dotnet命令，C#本次只核验源码接口。
+**2026-11-13当前状态：前向/反向两套v2 DLL已实际Windows构建和独立消费验证。** 新入口、构建/组装命令、51项C#测试及严格迁移4/5通过的证据见[本次v2交付](2026-11-13-前向与反向模型v2-DLL交付.md)。程序集分别为`露点与能耗预测模型v2.dll`和`最优能耗工况搜索模型v2.dll`，共享核心及NuGet版本2.0.0。用`build_v2.ps1`扩展下述基础流程、`package_v2_delivery.py`封装两份成品；后述未找到dotnet/仅源码同步指11月9日至11日的历史阶段。QY当前Python18/C#17次差异仍保留为严格迁移失败，不因新DLL可运行改成通过。
+
+当前新风已升级为9输入、图内Softplus湿度非负头(beta=50)，完整身份与验证边界见[本次升级说明](2026-11-09-新风基线升级.md)。整机物理规则保持不变；既有DLL/NuGet不能据此认定已重建。本机未找到dotnet命令，C#本次只核验源码接口。
+
+2026-11-10主转轮已按用户要求使用与新风相同的图内湿度Softplus头(beta50)重训；当前权重/scaler须对照runtime_models.main，旧无头身份列入historical_runtime_models.main_unconstrained_20261110，另保留更早历史身份。三原工况当前数值收敛，原始负湿度已消除，但冷吹温度超域和水汽偏差仍在；见[当前验证](2026-11-10-主转轮Softplus非负约束.md)。C#加载器现在也要求主模型声明该图内约束，不在C#重新加一次Softplus；既有DLL不自动更新。
 
 
 ## 最终基线与验证边界
@@ -44,7 +48,7 @@ dotnet build deployment/dotnet/src/Dehumidifier.Simulation/Dehumidifier.Simulati
 
 ## ONNX 的输入输出边界
 
-`export_onnx.py` 导出 KAN 主体和新风湿度非负头，预处理、逆变换与整机物理模型均在图外。每台图的输入名 `input`、输出名 `output`，数据类型 float32，ONNX opset 17，动态 batch：XF `[batch,9] → [batch,6]`，main `[batch,9] → [batch,6]`。
+`export_onnx.py` 为两台模型都导出KAN主体及三个湿度的Softplus头；两台都执行反归一化后非负检查。预处理、逆变换与整机物理模型均在图外。每台图的输入名 `input`、输出名 `output`，数据类型 float32，ONNX opset 17，动态 batch：XF `[batch,9] → [batch,6]`，main `[batch,9] → [batch,6]`。
 
 当前原始物理输入列必须保序：
 
@@ -144,7 +148,7 @@ string? png = result.DashboardPngPath;
 
 公开类型还包括 `SimulationConfig`、`SolverOptions`、`SimulationResult`、`AirState`、`RotorOutputs`、`ConvergenceInfo`、`SimulationException`。同一 `Simulator` 的请求由 SemaphoreSlim 串行；窗体中用 await，先取消并等任务结束再 Dispose。`SimulateForValidationAsync` 使用同一求解器但不留档，仅用于验证/性能测量，常规计算仍用 `SimulateAsync`。取消在迭代间检查，不保证中断正在执行的原生推理。
 
-两负荷为热负荷，四分项必须是 `CC1_kW`、`CC2_kW`、`Heater_Low_kW`、`Heater_OA_kW`；表冷为负，冷负荷取两项绝对值之和，热负荷为两加热器之和。凝结与自然满足零负荷应保留，不能把热负荷叫作整机直接电耗。
+当前两负荷为热负荷，六分项为 `CC1_kW`、`CC2_kW`、`CC3_kW`、`Heater_Low_kW`、`Heater_OA_kW`、`Heater_Post_kW`；表冷为负，冷负荷取三项绝对值之和，热负荷为三加热器之和。凝结与自然满足零负荷应保留，不能把热负荷叫作整机直接电耗。末端关闭也保留0键。
 
 ## 验证与严格迁移
 
@@ -168,7 +172,7 @@ python deployment/dotnet/validate_migration.py \
   --output results/deployment/运行编号/reports/validation.json
 ```
 
-工具逐一比较送风、所有节点、两转轮六输出、四热负荷及汇总、收敛历史/末次输入/残差；若任一侧有 `regen_mix_rule` 也比较，另一侧缺字段会失败。阈值固定如下，不为通过而放宽：
+工具逐一比较送风、所有节点、两转轮六输出、六热负荷及汇总、收敛历史/末次输入/残差；若任一侧有 `regen_mix_rule` 也比较，另一侧缺字段会失败。阈值固定如下，不为通过而放宽：
 
 | 类别 | 允许最大绝对差 |
 | --- | ---: |

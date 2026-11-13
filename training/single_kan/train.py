@@ -640,7 +640,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--process-humidity-transform", choices=("log1p", "log"), default="log1p",
                         help="新风CSV候选处理出口含湿量变换；log为显式对照实验，默认契约不变")
     parser.add_argument("--humidity-output-constraint", choices=("auto", "none", "softplus"), default="auto",
-                        help="默认auto：新风log1p采用Softplus基线(beta=50)，主转轮/纯log无头；none仅历史对照")
+                        help="默认auto：两台log1p风量候选采用Softplus(beta=50)，纯log无头；none仅历史对照")
     parser.add_argument("--resume", type=Path, default=None, help="旧运行目录或 checkpoint；恢复结果写入新目录")
     parser.add_argument("--no-progress", action="store_true", help="关闭 tqdm")
     return parser
@@ -651,8 +651,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.process_humidity_transform == "log" and (args.dataset_dir is None or args.profile != "xf"):
             raise PipelineError("纯log对照实验要求 --dataset-dir 和 --profile xf")
-        if args.humidity_output_constraint == "softplus" and (args.dataset_dir is None or args.profile != "xf" or args.process_humidity_transform != "log1p"):
-            raise PipelineError("湿度非负输出对照需要xf的CSV数据及log1p目标变换")
+        if args.humidity_output_constraint == "softplus" and (args.dataset_dir is None or args.process_humidity_transform != "log1p"):
+            raise PipelineError("湿度非负输出需要风量CSV数据及log1p目标变换")
         if args.dataset_dir is not None or args.model_type != "kan":
             from .candidate_train import run_candidate_suite
 

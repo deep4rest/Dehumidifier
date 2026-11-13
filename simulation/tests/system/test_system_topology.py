@@ -170,6 +170,8 @@ _REQUIRED_ENERGY_KEYS = {
     "CC2_kW",
     "Heater_OA_kW",
     "Heater_Low_kW",
+    "CC3_kW",
+    "Heater_Post_kW",
 }
 
 

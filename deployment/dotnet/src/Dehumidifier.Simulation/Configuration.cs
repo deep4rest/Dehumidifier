@@ -23,7 +23,8 @@ public sealed record ControlSetpointsConfig(
     [property: JsonPropertyName("heater_low_T_degC")] double HeaterLowC,
     [property: JsonPropertyName("heater_oa_T_degC")] double HeaterOaC,
     [property: JsonPropertyName("rotor1_rpm")] double Rotor1Rpm,
-    [property: JsonPropertyName("rotor2_rpm")] double Rotor2Rpm);
+    [property: JsonPropertyName("rotor2_rpm")] double Rotor2Rpm,
+    [property: JsonPropertyName("supply_T_target_degC")] double? SupplyTemperatureTargetC = null);
 
 public sealed class SimulationConfig
 {
@@ -65,6 +66,8 @@ public sealed class SimulationConfig
         var c = ControlSetpoints;
         if (!double.IsFinite(c.Rotor1Rpm) || c.Rotor1Rpm <= 0 || !double.IsFinite(c.Rotor2Rpm) || c.Rotor2Rpm <= 0)
             throw new SimulationException("CONFIG_INVALID", "转轮转速必须是正的有限值");
+        if (c.SupplyTemperatureTargetC is double target && (!double.IsFinite(target) || target <= -273.15))
+            throw new SimulationException("CONFIG_INVALID", "control_setpoints.supply_T_target_degC 必须为高于绝对零度的有限温度或null");
         var density = ReferenceDensity(Psychrometrics.PressurePa);
         if (!double.IsFinite(density) || density <= 0) throw new SimulationException("CONFIG_INVALID", "室外新风状态无法得到正的有限干空气密度");
         // 企业风量规则（2026-09-17）：Heater_OA 入口目标 = R1 处理出口 / 3；
@@ -93,7 +96,8 @@ public sealed class SimulationConfig
         foreach (var (name, value) in values) if (!double.IsFinite(value) || value <= 0) throw new SimulationException("CONFIG_INVALID", $"配置字段 {path}.{name} 必须 > 0");
     }
 
-    internal static SimulationConfig Parse(string json, string? sourcePath = null)
+    /// <summary>严格解析schema v2 JSON，拒绝未知字段并验证物理输入。</summary>
+    public static SimulationConfig Parse(string json, string? sourcePath = null)
     {
         try
         {
@@ -104,7 +108,7 @@ public sealed class SimulationConfig
             var psych = root.GetProperty("psychrometrics"); Exact(psych, new[] { "pressure_Pa", "dew_point_basis" }, "psychrometrics");
             var flow = root.GetProperty("flow_reference"); Exact(flow, new[] { "basis" }, "flow_reference");
             var system = root.GetProperty("system_params"); Exact(system, new[] { "fan1_P_kW", "fan2_P_kW", "rotor1", "rotor2" }, "system_params");
-            var controls = root.GetProperty("control_setpoints"); Exact(controls, new[] { "cc1_T_outlet_degC", "cc2_T_outlet_degC", "heater_low_T_degC", "heater_oa_T_degC", "rotor1_rpm", "rotor2_rpm" }, "control_setpoints");
+            var controls = root.GetProperty("control_setpoints"); Exact(controls, new[] { "cc1_T_outlet_degC", "cc2_T_outlet_degC", "heater_low_T_degC", "heater_oa_T_degC", "rotor1_rpm", "rotor2_rpm" }, "control_setpoints", new[] { "supply_T_target_degC" });
             var result = new SimulationConfig
             {
                 SchemaVersion = Int(root, "schema_version", "schema_version"),
@@ -112,7 +116,7 @@ public sealed class SimulationConfig
                 FlowReference = new FlowReferenceConfig(String(flow, "basis", "flow_reference.basis")),
                 OutdoorAir = Air(root, "outdoor_air"), ReturnAir = Air(root, "return_air"), RegenOutdoorAir = Air(root, "regen_outdoor_air"),
                 SystemParams = new SystemConfig(Number(system, "fan1_P_kW", "system_params.fan1_P_kW"), Number(system, "fan2_P_kW", "system_params.fan2_P_kW"), Rotor(system, "rotor1", "system_params.rotor1"), Rotor(system, "rotor2", "system_params.rotor2")),
-                ControlSetpoints = new ControlSetpointsConfig(Number(controls, "cc1_T_outlet_degC", "control_setpoints.cc1_T_outlet_degC"), Number(controls, "cc2_T_outlet_degC", "control_setpoints.cc2_T_outlet_degC"), Number(controls, "heater_low_T_degC", "control_setpoints.heater_low_T_degC"), Number(controls, "heater_oa_T_degC", "control_setpoints.heater_oa_T_degC"), Number(controls, "rotor1_rpm", "control_setpoints.rotor1_rpm"), Number(controls, "rotor2_rpm", "control_setpoints.rotor2_rpm")),
+                ControlSetpoints = new ControlSetpointsConfig(Number(controls, "cc1_T_outlet_degC", "control_setpoints.cc1_T_outlet_degC"), Number(controls, "cc2_T_outlet_degC", "control_setpoints.cc2_T_outlet_degC"), Number(controls, "heater_low_T_degC", "control_setpoints.heater_low_T_degC"), Number(controls, "heater_oa_T_degC", "control_setpoints.heater_oa_T_degC"), Number(controls, "rotor1_rpm", "control_setpoints.rotor1_rpm"), Number(controls, "rotor2_rpm", "control_setpoints.rotor2_rpm"), OptionalNumber(controls, "supply_T_target_degC", "control_setpoints.supply_T_target_degC")),
                 SourcePath = sourcePath, SourceName = sourcePath is null ? "case" : Path.GetFileNameWithoutExtension(sourcePath),
             };
             result.Validate();
@@ -127,8 +131,10 @@ public sealed class SimulationConfig
     private static RotorConfig Rotor(JsonElement root, string name, string path)
     { var value = root.GetProperty(name); Exact(value, new[] { "thickness_mm", "diameter_mm", "process_airspeed_m_s", "cool_blow_airspeed_m_s", "cool_blow_flow_m3h", "regen_angle_deg", "cool_blow_angle_deg" }, path); return new RotorConfig(Number(value, "thickness_mm", $"{path}.thickness_mm"), Number(value, "diameter_mm", $"{path}.diameter_mm"), Number(value, "process_airspeed_m_s", $"{path}.process_airspeed_m_s"), Number(value, "cool_blow_airspeed_m_s", $"{path}.cool_blow_airspeed_m_s"), Number(value, "cool_blow_flow_m3h", $"{path}.cool_blow_flow_m3h"), Number(value, "regen_angle_deg", $"{path}.regen_angle_deg"), Number(value, "cool_blow_angle_deg", $"{path}.cool_blow_angle_deg")); }
     private static void RequireObject(JsonElement value, string path) { if (value.ValueKind != JsonValueKind.Object) throw new SimulationException("CONFIG_INVALID", $"配置字段 {path} 必须是对象"); }
-    private static void Exact(JsonElement value, IEnumerable<string> required, string path)
-    { RequireObject(value, path); var set = required.ToHashSet(StringComparer.Ordinal); foreach (var r in set) if (!value.TryGetProperty(r, out _)) throw new SimulationException("CONFIG_INVALID", $"缺少配置字段：{(path.Length == 0 ? r : path + "." + r)}"); foreach (var p in value.EnumerateObject()) if (!set.Contains(p.Name)) throw new SimulationException("CONFIG_INVALID", $"未知配置字段：{(path.Length == 0 ? p.Name : path + "." + p.Name)}"); }
+    private static void Exact(JsonElement value, IEnumerable<string> required, string path, IEnumerable<string>? optional = null)
+    { RequireObject(value, path); var set = required.ToHashSet(StringComparer.Ordinal); foreach (var r in set) if (!value.TryGetProperty(r, out _)) throw new SimulationException("CONFIG_INVALID", $"缺少配置字段：{(path.Length == 0 ? r : path + "." + r)}"); if (optional is not null) set.UnionWith(optional); foreach (var p in value.EnumerateObject()) if (!set.Contains(p.Name)) throw new SimulationException("CONFIG_INVALID", $"未知配置字段：{(path.Length == 0 ? p.Name : path + "." + p.Name)}"); }
+    private static double? OptionalNumber(JsonElement value, string name, string path)
+        => !value.TryGetProperty(name, out var item) || item.ValueKind == JsonValueKind.Null ? null : Number(value, name, path);
     private static double Number(JsonElement value, string name, string path) { if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.Number || !item.TryGetDouble(out var number) || !double.IsFinite(number)) throw new SimulationException("CONFIG_INVALID", $"配置字段 {path} 必须是有限数值"); return number; }
     private static int Int(JsonElement value, string name, string path) { var number = Number(value, name, path); if (number != Math.Truncate(number)) throw new SimulationException("CONFIG_INVALID", $"配置字段 {path} 必须是整数"); return checked((int)number); }
     private static string String(JsonElement value, string name, string path) { if (!value.TryGetProperty(name, out var item) || item.ValueKind != JsonValueKind.String) throw new SimulationException("CONFIG_INVALID", $"配置字段 {path} 必须是字符串"); return item.GetString()!; }

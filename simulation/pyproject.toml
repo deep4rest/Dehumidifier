@@ -9,6 +9,7 @@ description = "低露点双转轮除湿机整机仿真库"
 requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.23",
+    "scipy>=1.9",
     "pandas>=1.5",
     "scikit-learn>=1.2",
     "torch>=2.0",

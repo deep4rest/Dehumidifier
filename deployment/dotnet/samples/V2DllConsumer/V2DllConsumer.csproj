@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PlatformTarget>x64</PlatformTarget>
+    <ModelDllDirectory Condition="'$(ModelDllDirectory)' == ''">$(MSBuildThisFileDirectory)../../../../lib</ModelDllDirectory>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="露点与能耗预测模型v2">
+      <HintPath>$(ModelDllDirectory)/露点与能耗预测模型v2.dll</HintPath>
+    </Reference>
+    <Reference Include="最优能耗工况搜索模型v2">
+      <HintPath>$(ModelDllDirectory)/最优能耗工况搜索模型v2.dll</HintPath>
+    </Reference>
+    <Reference Include="Dehumidifier.Simulation">
+      <HintPath>$(ModelDllDirectory)/Dehumidifier.Simulation.dll</HintPath>
+    </Reference>
+    <Content Include="$(ModelDllDirectory)/**/*.dll">
+      <Link>%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>

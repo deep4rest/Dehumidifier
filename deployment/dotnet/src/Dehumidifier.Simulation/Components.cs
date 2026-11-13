@@ -16,6 +16,17 @@ internal sealed record RotorInputs(
 
 internal static class Components
 {
+    /// <summary>主转轮处理出口依次经过后表冷与后加热，均以目标送风温度按需工作。</summary>
+    internal static (AirState AfterCooling, AirState Supply, double CoolingQKW, double HeatingQKW) TerminalConditioning(AirState inlet, double? targetC)
+    {
+        if (targetC is null) return (inlet, inlet, 0.0, 0.0);
+        if (!double.IsFinite(targetC.Value) || targetC.Value <= -273.15)
+            throw new SimulationException("CONFIG_INVALID", "control_setpoints.supply_T_target_degC 必须高于绝对零度且有限");
+        var cooling = CoolingCoil(inlet, targetC.Value);
+        var heating = Heater(cooling.State, targetC.Value);
+        return (cooling.State, heating.State, cooling.QKW, heating.QKW);
+    }
+
     internal static (AirState State, double QKW) CoolingCoil(AirState inlet, double targetC)
     {
         if (targetC >= inlet.TemperatureC) return (inlet, 0.0);

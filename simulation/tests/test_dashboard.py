@@ -8,7 +8,9 @@ from PIL import Image
 
 from dual_rotor_sim.dashboard import (
     _dashboard_payload_from_record,
+    _process_path_nodes,
     _state_table_rows,
+    _terminal_summary,
     save_dashboard_from_record,
 )
 
@@ -109,3 +111,59 @@ def test_historical_record_redraw_writes_a_readable_png(tmp_path: Path):
         assert image.format == "PNG"
         assert image.width >= 2000
         assert image.height >= 1500
+
+
+def _terminal_run_document(*, target: float | None = 20., cooling: float = -5., heating: float = 0.) -> dict:
+    document = _legacy_run_document()
+    control = document["config"]["control_setpoints"]
+    control["supply_T_target_degC"] = target
+    result = document["result"]
+    result["energy_breakdown_kW"].update({"CC3_kW": cooling, "Heater_Post_kW": heating})
+    result["energy_summary_kW"]["cooling_load"] += abs(cooling)
+    result["energy_summary_kW"]["heating_load"] += heating
+    inlet = {**result["supply_state"], "T_degC": 25.}
+    after_cc3 = {**inlet, "T_degC": 20. if cooling else 25.}
+    result["intermediate_states"]["AfterR2_P"] = inlet
+    result["intermediate_states"]["AfterCC3"] = after_cc3
+    result["supply_state"]["T_degC"] = 28. if heating else after_cc3["T_degC"]
+    result["intermediate_states"]["Supply"] = dict(result["supply_state"])
+    return document
+
+
+def test_terminal_record_keeps_six_loads_and_actual_ten_node_path():
+    payload = _dashboard_payload_from_record(_terminal_run_document())
+    assert tuple(payload.energy_breakdown) == (
+        "CC1_kW", "CC2_kW", "CC3_kW", "Heater_Low_kW", "Heater_OA_kW", "Heater_Post_kW",
+    )
+    assert payload.energy_breakdown["CC3_kW"] == -5.
+    assert payload.energy_breakdown["Heater_Post_kW"] == 0.
+    nodes = _process_path_nodes(payload.intermediate_states)
+    assert [name for name, _ in nodes][-3:] == ["AfterR2_P", "AfterCC3", "Supply"]
+    rows = _state_table_rows(payload.intermediate_states)
+    assert len(rows) == 10
+    assert [row[1] for row in rows[-3:]] == ["25.00", "20.00", "20.00"]
+
+
+def test_terminal_summary_distinguishes_auto_cooling_heating_and_legacy():
+    cool = _terminal_run_document(target=20., cooling=-5., heating=0.)
+    assert "送风目标 20.0℃" in _terminal_summary(_dashboard_payload_from_record(cool), cool["config"])
+    assert "后表冷：开，后加热：关" in _terminal_summary(_dashboard_payload_from_record(cool), cool["config"])
+    heat = _terminal_run_document(target=28., cooling=0., heating=4.)
+    assert "后表冷：关，后加热：开" in _terminal_summary(_dashboard_payload_from_record(heat), heat["config"])
+    bypass = _terminal_run_document(target=None, cooling=0., heating=0.)
+    assert "旁通" in _terminal_summary(_dashboard_payload_from_record(bypass), bypass["config"])
+    legacy = _legacy_run_document()
+    assert "历史记录" in _terminal_summary(_dashboard_payload_from_record(legacy), legacy["config"])
+    assert len(_process_path_nodes(_dashboard_payload_from_record(legacy).intermediate_states)) == 8
+
+
+def test_terminal_record_redraw_writes_a_readable_png(tmp_path: Path):
+    import json
+    record_path = tmp_path / "terminal.json"
+    record_path.write_text(json.dumps(_terminal_run_document(), ensure_ascii=False), encoding="utf-8")
+    target = tmp_path / "terminal_dashboard.png"
+    save_dashboard_from_record(record_path=record_path, target=target)
+    with Image.open(target) as image:
+        assert image.format == "PNG"
+        assert image.width >= 2000
+        assert image.height >= 1800

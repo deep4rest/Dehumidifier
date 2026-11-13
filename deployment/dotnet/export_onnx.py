@@ -121,8 +121,8 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
     (target / f"preprocessing_{profile}.json").write_text(
         json.dumps(preprocessing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    if profile == "xf" and np.any(physical_ort[:, [1, 3, 5]] < 0):
-        raise RuntimeError("新风ONNX湿度非负约束失效")
+    if np.any(physical_ort[:, [1, 3, 5]] < 0):
+        raise RuntimeError(f"{profile} ONNX湿度非负约束失效")
     contract = {
         "schema_version": 1,
         "profile": profile,
