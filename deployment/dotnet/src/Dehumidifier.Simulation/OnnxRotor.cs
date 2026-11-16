@@ -36,6 +36,10 @@ internal sealed class OnnxRotor : IDisposable
             if (!File.Exists(contractPath) || !File.Exists(preprocessingPath)) throw new SimulationException("MODEL_CONTRACT_MISSING", $"模型目录缺少契约文件: {root}");
             using var contractDoc = JsonDocument.Parse(File.ReadAllText(contractPath));
             var contract = contractDoc.RootElement;
+            if (!contract.TryGetProperty("inference_numeric_policy", out var precision) || precision.GetString() != "float64_body_float32_io_v1")
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "需要双精度内部推理的配套模型，请整套更新dll和models");
+            if (!contract.TryGetProperty("onnx_session_policy", out var sessionPolicy) || sessionPolicy.GetString() != "cpu_sequential_no_fusion_no_prepacking_v1")
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "模型推理会话数值策略不匹配");
             if (contract.GetProperty("schema_version").GetInt32() != 2 || contract.GetProperty("preprocessing_file").GetString() != "preprocessing.json")
                 throw new SimulationException("MODEL_CONTRACT_INVALID", "需要本次导出的schema2部署契约，请勿混用旧models目录");
             var models = contract.GetProperty("models").EnumerateArray().ToArray();
@@ -78,7 +82,17 @@ internal sealed class OnnxRotor : IDisposable
             var modelFile = Path.Combine(root, profile + ".onnx");
             if (!File.Exists(modelFile)) throw new SimulationException("MODEL_MISSING", $"模型文件不存在: {modelFile}");
             VerifyHash(modelFile, model.GetProperty("onnx_sha256").GetString());
-            session = new InferenceSession(modelFile);
+            // ORT 1.20 may fuse double SiLU to a float-only QuickGelu kernel.
+            // Lock the validated CPU arithmetic path instead of implicit fusions.
+            using var options = new SessionOptions
+            {
+                GraphOptimizationLevel = GraphOptimizationLevel.ORT_DISABLE_ALL,
+                ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
+                IntraOpNumThreads = 1,
+                InterOpNumThreads = 1,
+            };
+            options.AddSessionConfigEntry("session.disable_prepacking", "1");
+            session = new InferenceSession(modelFile, options);
             if (session.InputMetadata.Count != 1 || session.OutputMetadata.Count != 1
                 || !session.InputMetadata.TryGetValue(_inputName, out var input) || !session.OutputMetadata.TryGetValue(_outputName, out var output))
                 throw new SimulationException("MODEL_CONTRACT_INVALID", $"ONNX 张量名不匹配: {_inputName}/{_outputName}");

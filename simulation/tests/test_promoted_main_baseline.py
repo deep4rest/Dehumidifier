@@ -34,6 +34,6 @@ def test_main_raw_humidity_is_nonnegative_and_temperature_bypasses_head(cold_inl
     x=runtime.x_scaler.transform(frame[runtime.input_cols].to_numpy(np.float32))
     with torch.no_grad():
         features=torch.as_tensor(x,dtype=torch.float32)
-        raw=runtime.model.network(features)
+        raw=runtime.model.network(features.double()).float()
         constrained=runtime.model(features)
     torch.testing.assert_close(constrained[:,[0,2,4]],raw[:,[0,2,4]],atol=0,rtol=0)

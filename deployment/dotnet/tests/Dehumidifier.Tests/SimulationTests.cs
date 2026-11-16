@@ -71,7 +71,7 @@ public sealed class SimulationTests
     public void AssemblyVersionDistinguishesTheV2SixLoadPackage()
     {
         var version = typeof(Simulator).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        Assert.StartsWith("2.0.2", version);
+        Assert.StartsWith("2.0.3", version);
     }
 
     [Fact]

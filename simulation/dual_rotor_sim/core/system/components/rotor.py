@@ -11,6 +11,7 @@ import math
 import pickle
 from ....scalers import TargetScalerAdapter as _ArtifactTargetScaler, validate_scaler_columns
 from ....output_constraints import HumidityConstrainedModel
+from ....numeric_runtime import StableInferenceModel
 import sys
 import types
 from dataclasses import dataclass
@@ -629,6 +630,7 @@ class SingleRotorModel:
             model.load_state_dict(state_dict)
         except RuntimeError as exc:
             raise RuntimeError(f"单 KAN checkpoint 与列/架构契约不匹配: {exc}") from exc
+        model = StableInferenceModel(model)
         model.to(device)
         model.eval()
         return cls(

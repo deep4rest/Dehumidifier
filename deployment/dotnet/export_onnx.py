@@ -27,6 +27,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from dual_rotor_sim.core.system.components.rotor import SingleRotorModel  # noqa: E402
+from dual_rotor_sim.numeric_runtime import INFERENCE_NUMERIC_POLICY, ONNX_SESSION_POLICY  # noqa: E402
+from deployment.dotnet.onnx_precision import export_stable_model, stable_session_options  # noqa: E402
 
 INPUT_SCALING = "sklearn_float32_inplace_float64_coefficients_v1"
 
@@ -73,7 +75,7 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
     # The model's public forward accepts scaled float32 input and returns scaled
     # float32 output.  Keeping this boundary explicit prevents accidental
     # duplicate scaling in a host application.
-    torch.onnx.export(
+    export_stable_model(
         model,
         (dummy,),
         str(onnx_path),
@@ -95,7 +97,7 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
     scaled = preprocessor.x_scaler.transform(samples.astype(np.float32)).astype(np.float32)
     with torch.no_grad():
         torch_scaled = model(torch.from_numpy(scaled)).cpu().numpy().astype(np.float32)
-    session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
+    session = ort.InferenceSession(str(onnx_path), sess_options=stable_session_options(), providers=["CPUExecutionProvider"])
     ort_scaled = session.run(["output"], {"input": scaled})[0].astype(np.float32)
     scaled_error = np.abs(torch_scaled.astype(np.float64) - ort_scaled.astype(np.float64))
     physical_torch = preprocessor.y_scaler.inverse_transform(torch_scaled)
@@ -130,6 +132,7 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
         raise RuntimeError(f"{profile} ONNX湿度非负约束失效")
     contract = {
         "schema_version": 2,
+        "inference_numeric_policy": INFERENCE_NUMERIC_POLICY,
         "profile": profile,
         "model_type": "KAN",
         "onnx_file": onnx_path.name,
@@ -187,6 +190,8 @@ def main() -> int:
     )
     merged = {
         "schema_version": 2,
+        "inference_numeric_policy": INFERENCE_NUMERIC_POLICY,
+        "onnx_session_policy": ONNX_SESSION_POLICY,
         "runtime": "Microsoft.ML.OnnxRuntime CPU",
         "preprocessing_file": "preprocessing.json",
         "preprocessing_sha256": sha256(target / "preprocessing.json"),

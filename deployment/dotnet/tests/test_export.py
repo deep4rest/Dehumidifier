@@ -39,12 +39,15 @@ def test_exported_onnx_contract_matches_current_artifacts(tmp_path: Path):
     )
     contract = json.loads((output / "model_contract.json").read_text(encoding="utf-8"))
     assert contract['schema_version'] == 2
+    assert contract['inference_numeric_policy'] == 'float64_body_float32_io_v1'
+    assert contract['onnx_session_policy'] == 'cpu_sequential_no_fusion_no_prepacking_v1'
     assert contract['preprocessing_sha256'] == hashlib.sha256((output/'preprocessing.json').read_bytes()).hexdigest()
     assert {item["profile"] for item in contract["models"]} == {"xf", "main"}
     assert (output / "xf.onnx").is_file()
     assert (output / "main.onnx").is_file()
     assert (output / "preprocessing.json").is_file()
     for item in contract["models"]:
+        assert item['inference_numeric_policy'] == contract['inference_numeric_policy']
         assert item['onnx_sha256'] == hashlib.sha256((output/item['onnx_file']).read_bytes()).hexdigest()
         assert item['preprocessing_profile_sha256'] == hashlib.sha256((output/f"preprocessing_{item['profile']}.json").read_bytes()).hexdigest()
         assert item['verification']['input_boundary'] == 'SingleRotorModel.predict_frame'
