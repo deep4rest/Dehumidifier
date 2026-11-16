@@ -26,8 +26,9 @@ if str(ROOT / "simulation") not in sys.path:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from training.single_kan.model import Preprocessor  # noqa: E402
 from dual_rotor_sim.core.system.components.rotor import SingleRotorModel  # noqa: E402
+
+INPUT_SCALING = "sklearn_float32_inplace_float64_coefficients_v1"
 
 
 def sha256(path: Path) -> str:
@@ -47,16 +48,13 @@ def _load(profile: str) -> tuple[torch.nn.Module, Any, dict[str, Any], Path]:
     # 正式仿真加载器验证最终风量输入、六输出、架构及 scaler；旧 XLS
     # load_artifact 仍有历史风速契约，不能作为最终风量包的加载入口。
     runtime = SingleRotorModel.from_artifact(artifact, profile, device="cpu")
-    import pickle
-    with (artifact / "model/scalers.pkl").open("rb") as stream:
-        preprocessor = Preprocessor.from_state_dict(pickle.load(stream))
-    return runtime.model, preprocessor, runtime.metadata, artifact
+    return runtime.model, runtime, runtime.metadata, artifact
 
 
 def _make_samples(profile: str, preprocessor: Any, count: int = 257) -> np.ndarray:
     """Deterministic in-domain, boundary, and mild out-of-domain rows."""
     rng = np.random.default_rng(20260910 + (0 if profile == "xf" else 1))
-    scaler = preprocessor.input_scaler
+    scaler = preprocessor.x_scaler
     lo = np.asarray(scaler.data_min_, dtype=np.float64)
     hi = np.asarray(scaler.data_max_, dtype=np.float64)
     rows = [lo, hi, (lo + hi) / 2.0]
@@ -90,22 +88,28 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
     onnx.checker.check_model(checked)
 
     samples = _make_samples(profile, preprocessor)
-    scaled = preprocessor.transform_features(samples).astype(np.float32)
+    # Match SingleRotorModel.predict_frame exactly: physical values are first
+    # float32; sklearn applies its float64 coefficients in-place, rounding after
+    # multiplication and again after addition. Training Preprocessor uses a
+    # different float64 input boundary and must not validate online deployment.
+    scaled = preprocessor.x_scaler.transform(samples.astype(np.float32)).astype(np.float32)
     with torch.no_grad():
         torch_scaled = model(torch.from_numpy(scaled)).cpu().numpy().astype(np.float32)
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     ort_scaled = session.run(["output"], {"input": scaled})[0].astype(np.float32)
     scaled_error = np.abs(torch_scaled.astype(np.float64) - ort_scaled.astype(np.float64))
-    physical_torch = preprocessor.inverse_targets(torch_scaled)
-    physical_ort = preprocessor.inverse_targets(ort_scaled)
+    physical_torch = preprocessor.y_scaler.inverse_transform(torch_scaled)
+    physical_ort = preprocessor.y_scaler.inverse_transform(ort_scaled)
     physical_error = np.abs(physical_torch - physical_ort)
     if not np.isfinite(physical_ort).all():
         raise RuntimeError(f"{profile} ONNX 输出包含非有限值")
     if float(physical_error.max()) >= 1e-3:
         raise RuntimeError(f"{profile} ONNX 导出物理量最大绝对误差超出 1e-3：{physical_error.max()}")
 
-    xs = preprocessor.input_scaler
-    ys = preprocessor.target_scaler
+    xs = preprocessor.x_scaler
+    ys = preprocessor.y_scaler.scaler
+    if xs.scale_.dtype != np.float64 or xs.min_.dtype != np.float64:
+        raise RuntimeError("当前部署契约要求正式输入scaler使用float64系数")
     preprocessing = {
         "feature_range": [-1.0, 1.0],
         "input_columns": list(metadata["input_cols"]),
@@ -114,9 +118,10 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
         "input_min": _json_float_list(xs.min_),
         "output_scale": _json_float_list(ys.scale_),
         "output_min": _json_float_list(ys.min_),
-        "log1p_output_columns": list(preprocessor.target_transform.log1p_targets),
+        "log1p_output_columns": list(preprocessor.y_scaler.log_columns),
         "clip": False,
-        "numeric_boundary": "physical double -> input float32 -> ONNX float32 -> physical double",
+        "input_scaling": INPUT_SCALING,
+        "numeric_boundary": "physical float32; float64 multiply -> round float32; float64 add -> round float32; ONNX float32; inverse float64",
     }
     (target / f"preprocessing_{profile}.json").write_text(
         json.dumps(preprocessing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -124,10 +129,12 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
     if np.any(physical_ort[:, [1, 3, 5]] < 0):
         raise RuntimeError(f"{profile} ONNX湿度非负约束失效")
     contract = {
-        "schema_version": 1,
+        "schema_version": 2,
         "profile": profile,
         "model_type": "KAN",
         "onnx_file": onnx_path.name,
+        "onnx_sha256": sha256(onnx_path),
+        "preprocessing_profile_sha256": sha256(target / f"preprocessing_{profile}.json"),
         "opset": 17,
         "input_name": "input",
         "output_name": "output",
@@ -144,6 +151,7 @@ def _export_one(profile: str, target: Path) -> dict[str, Any]:
             "model/scalers.pkl": sha256(artifact / "model" / "scalers.pkl"),
         },
         "verification": {
+            "input_boundary": "SingleRotorModel.predict_frame",
             "samples": int(len(samples)),
             "max_abs_scaled": float(scaled_error.max()),
             "max_abs_physical": float(physical_error.max()),
@@ -168,7 +176,7 @@ def main() -> int:
     profiles = ("xf", "main") if args.profile == "all" else (args.profile,)
     contracts = [_export_one(profile, target) for profile in profiles]
     preprocessing = {
-        "schema_version": 1,
+        "schema_version": 2,
         "profiles": {
             profile: json.loads((target / f"preprocessing_{profile}.json").read_text(encoding="utf-8"))
             for profile in profiles
@@ -178,9 +186,10 @@ def main() -> int:
         json.dumps(preprocessing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     merged = {
-        "schema_version": 1,
+        "schema_version": 2,
         "runtime": "Microsoft.ML.OnnxRuntime CPU",
         "preprocessing_file": "preprocessing.json",
+        "preprocessing_sha256": sha256(target / "preprocessing.json"),
         "models": contracts,
     }
     (target / "model_contract.json").write_text(

@@ -71,7 +71,7 @@ public sealed class SimulationTests
     public void AssemblyVersionDistinguishesTheV2SixLoadPackage()
     {
         var version = typeof(Simulator).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        Assert.StartsWith("2.0.1", version);
+        Assert.StartsWith("2.0.2", version);
     }
 
     [Fact]
@@ -89,6 +89,23 @@ public sealed class SimulationTests
     {
         var options = new SolverOptions();
         Assert.Equal(60, options.MaxIterations); Assert.Equal(0.8, options.Relaxation); Assert.Equal(1e-4, options.TemperatureToleranceC); Assert.Equal(1e-6, options.HumidityToleranceGPerKg);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void TypedConfigurationRejectsNonfiniteControlsBeforeModelCalls(double value)
+    {
+        var source=Simulator.LoadConfiguration(Path.Combine(AppContext.BaseDirectory,"examples/qy1070_case.json"));
+        var controls=source.ControlSetpoints;
+        foreach(var invalid in new[]{controls with{Cc1OutletC=value},controls with{Cc2OutletC=value},controls with{HeaterOaC=value},controls with{HeaterLowC=value}})
+        {
+            var config=new SimulationConfig{SchemaVersion=source.SchemaVersion,Psychrometrics=source.Psychrometrics,
+                FlowReference=source.FlowReference,OutdoorAir=source.OutdoorAir,ReturnAir=source.ReturnAir,
+                RegenOutdoorAir=source.RegenOutdoorAir,SystemParams=source.SystemParams,ControlSetpoints=invalid};
+            Assert.Equal("CONFIG_INVALID",Assert.Throws<SimulationException>(config.Validate).Code);
+        }
     }
 
     [Fact]

@@ -64,6 +64,8 @@ public sealed class SimulationConfig
         if (!double.IsFinite(SystemParams.Fan1KW) || SystemParams.Fan1KW <= 0 || !double.IsFinite(SystemParams.Fan2KW) || SystemParams.Fan2KW <= 0)
             throw new SimulationException("CONFIG_INVALID", "风机功率必须是正的有限值");
         var c = ControlSetpoints;
+        foreach (var (value, name) in new[] { (c.Cc1OutletC, "cc1_T_outlet_degC"), (c.Cc2OutletC, "cc2_T_outlet_degC"), (c.HeaterOaC, "heater_oa_T_degC"), (c.HeaterLowC, "heater_low_T_degC") })
+            if (!double.IsFinite(value)) throw new SimulationException("CONFIG_INVALID", $"配置字段 control_setpoints.{name} 必须是有限数值");
         if (!double.IsFinite(c.Rotor1Rpm) || c.Rotor1Rpm <= 0 || !double.IsFinite(c.Rotor2Rpm) || c.Rotor2Rpm <= 0)
             throw new SimulationException("CONFIG_INVALID", "转轮转速必须是正的有限值");
         if (c.SupplyTemperatureTargetC is double target && (!double.IsFinite(target) || target <= -273.15))

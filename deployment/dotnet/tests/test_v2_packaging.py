@@ -18,7 +18,7 @@ def fixture(tmp_path, monkeypatch):
     package = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(package)
     repository = tmp_path / "repo"
-    for name in ("README.md", "AGENTS.md", "requirements.txt", "deployment/dotnet/docs/v2模型DLL调用说明.md", "deployment/dotnet/src/Core/build/Core.targets"):
+    for name in ("README.md", "AGENTS.md", "requirements.txt", "deployment/dotnet/docs/v2模型DLL调用说明.md", "deployment/dotnet/docs/快速使用.md", "deployment/dotnet/samples/run_example.ps1", "deployment/dotnet/samples/V2DllConsumer/Program.cs", "deployment/dotnet/samples/V2DllConsumer/V2DllConsumer.csproj", "deployment/dotnet/src/Core/build/Core.targets"):
         path = repository / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("source-fixture", encoding="utf-8")
@@ -43,8 +43,14 @@ def fixture(tmp_path, monkeypatch):
     # Framework files stay with the self-contained verifier, not the DLL lib.
     (build / "v2verify/System.Private.CoreLib.dll").write_bytes(b"framework-fixture")
     (build / "nuget").mkdir()
-    for name in ("Dehumidifier.Simulation", "Dehumidifier.Prediction", "Dehumidifier.Optimization"):
-        (build / "nuget" / (name + f".{package.PACKAGE_VERSION}.nupkg")).write_bytes(b"current-package")
+    assemblies={"Dehumidifier.Simulation":"Dehumidifier.Simulation.dll",
+                **{name:title+'.dll' for _,title,name in package.PRODUCTS}}
+    for name,assembly in assemblies.items():
+        with ZipFile(build / "nuget" / (name + f".{package.PACKAGE_VERSION}.nupkg"),'w') as packed:
+            packed.writestr('lib/net8.0/'+assembly,(build/'v2verify'/assembly).read_bytes())
+            if name=='Dehumidifier.Simulation':
+                for filename in package.MODEL_FILES:
+                    packed.writestr('contentFiles/any/any/Dehumidifier/models/'+filename,(models/filename).read_bytes())
     return package, build, models, tmp_path
 
 
@@ -62,6 +68,11 @@ def test_two_names_hashes_minimal_lib_and_no_unperformed_claims(fixture):
         assert metadata["windows_runtime_validation_passed"] is False
         assert metadata["engineering_acceptance"] == "not_evaluated"
         assert (product / metadata["main_assembly"]).is_file()
+        assert all((product / 'dll' / (title+'.dll')).is_file() for _,title,_ in package.PRODUCTS)
+        assert (product / '快速使用.md').is_file()
+        assert (product / '接入示例/V2DllConsumer.csproj').is_file()
+        assert (product / 'run_example.ps1').read_bytes().startswith(b'\xef\xbb\xbf')
+        assert 'search' in (product / '02_搜索并前向复算.cmd').read_text(encoding='ascii')
         assert not (product / "dll/System.Private.CoreLib.dll").exists()
         assert (product / "verify/System.Private.CoreLib.dll").exists()
         manifest = json.loads(product.with_suffix(".manifest.json").read_text(encoding="utf-8"))
@@ -81,7 +92,9 @@ def test_strict_failure_and_runtime_success_are_kept_separate(fixture):
     strict = tmp / "validation.json"
     strict.write_text(json.dumps({"passed": False, "strict_migration_passed": False, "cases": []}), encoding="utf-8")
     runtime = tmp / "runtime.json"
-    runtime.write_text(json.dumps({"windows_runtime_validation_passed": True, "checks": ["actual-calls"]}), encoding="utf-8")
+    runtime.write_text(json.dumps({"windows_runtime_validation_passed": True, "checks": ["actual-calls"],
+        "model_sha256":{name:package.sha256(models/name) for name in package.MODEL_FILES},
+        "assembly_sha256":{name:package.sha256(build/'v2verify'/name) for name in ('Dehumidifier.Simulation.dll',*(p[1]+'.dll' for p in package.PRODUCTS))}}), encoding="utf-8")
     out = tmp / "reviewed_delivery"
     result = package.assemble(build, models, out, strict, runtime)
     assert result["strict_migration_passed"] is False
@@ -110,3 +123,22 @@ def test_rejects_mixed_build_before_creating_any_delivery(fixture, corruption):
     with pytest.raises((ValueError, FileNotFoundError)):
         package.assemble(build, models, out)
     assert not out.exists()
+
+
+def test_rejects_a_success_report_from_an_unidentified_build(fixture):
+    package,build,models,tmp=fixture
+    report=tmp/'old_runtime.json'
+    report.write_text(json.dumps({'windows_runtime_validation_passed':True}),encoding='utf-8')
+    with pytest.raises(ValueError,match='SHA256'):
+        package.assemble(build,models,tmp/'not_created',runtime=report)
+    assert not (tmp/'not_created').exists()
+
+
+def test_rejects_stale_nuget_assembly_even_if_the_filename_matches(fixture):
+    package,build,models,tmp=fixture
+    archive=build/'nuget'/f'Dehumidifier.Prediction.{package.PACKAGE_VERSION}.nupkg'
+    with ZipFile(archive,'w') as packed:
+        packed.writestr('lib/net8.0/露点与能耗预测模型v2.dll',b'old-business-dll')
+    with pytest.raises(ValueError,match='NuGet'):
+        package.assemble(build,models,tmp/'not_created')
+    assert not (tmp/'not_created').exists()

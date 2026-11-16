@@ -1,5 +1,7 @@
 # v2前向预测与反向搜索DLL调用说明
 
+当前补丁版本2.0.2。初次接入先看[快速使用](快速使用.md)：成品根目录提供两个双击运行示例及`接入示例`工程；每包`dll`都已含配套的两个入口和共享核心。将`dll`内文件放到宿主EXE旁，并将整个`models`目录放在EXE旁。部署契约已升级schema2，运行时会验证模型与预处理配套哈希、列序及缩放约定，请整套更新，不能只替换一个DLL或一份模型。ONNX原生库还需要VC++v14 x64运行库；自包含verify仅表示已带.NET运行时。当前严格PyTorch整机迁移仍有未通过项，具体看随包reports。
+
 两个成品入口分别为`露点与能耗预测模型v2.dll`和`最优能耗工况搜索模型v2.dll`，都是Windows x64环境下的.NET 8托管类库。命名空间和API使用英文，引用程序集时保留中文文件名。模型推理通过ONNX Runtime完成，运行不依赖Python、PyTorch、Conda或WSL。
 
 随包部署`Dehumidifier.Simulation.dll`、ONNX Runtime及绘图依赖、两个ONNX、三个预处理JSON和模型契约。不要只复制入口DLL。独立验证程序的自包含发布目录还包含.NET运行时；将DLL接入宿主时，宿主必须使用.NET 8与x64。托管类库不能直接用P/Invoke，也不能由.NET Framework 4.x直接引用。

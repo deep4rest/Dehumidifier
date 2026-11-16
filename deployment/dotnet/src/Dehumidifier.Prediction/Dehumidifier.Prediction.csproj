@@ -7,7 +7,7 @@
     <RootNamespace>Dehumidifier.Prediction</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Dehumidifier.Prediction</PackageId>
-    <Version>2.0.1</Version>
+    <Version>2.0.2</Version>
     <Authors>ModelBuild</Authors>
     <Description>双转轮露点与六项冷热负荷预测模型v2，使用ONNX Runtime，无Python运行时依赖。</Description>
   </PropertyGroup>

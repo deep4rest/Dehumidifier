@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Security.Cryptography;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
@@ -24,15 +25,24 @@ internal sealed class OnnxRotor : IDisposable
 
     public OnnxRotor(string modelDirectory, string profile)
     {
+        InferenceSession? session = null;
         try
         {
+            if (profile is not ("xf" or "main")) throw new SimulationException("MODEL_CONTRACT_INVALID", "转轮profile只能为xf或main");
             Profile = profile;
             var root = Path.GetFullPath(modelDirectory);
             var contractPath = Path.Combine(root, "model_contract.json");
             var preprocessingPath = Path.Combine(root, "preprocessing.json");
             if (!File.Exists(contractPath) || !File.Exists(preprocessingPath)) throw new SimulationException("MODEL_CONTRACT_MISSING", $"模型目录缺少契约文件: {root}");
             using var contractDoc = JsonDocument.Parse(File.ReadAllText(contractPath));
-            var model = contractDoc.RootElement.GetProperty("models").EnumerateArray().FirstOrDefault(x => x.GetProperty("profile").GetString() == profile);
+            var contract = contractDoc.RootElement;
+            if (contract.GetProperty("schema_version").GetInt32() != 2 || contract.GetProperty("preprocessing_file").GetString() != "preprocessing.json")
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "需要本次导出的schema2部署契约，请勿混用旧models目录");
+            var models = contract.GetProperty("models").EnumerateArray().ToArray();
+            if (models.Length != 2 || !models.Select(x => x.GetProperty("profile").GetString()).Order().SequenceEqual(new[] { "main", "xf" }))
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "部署契约必须各包含一个xf和main模型");
+            VerifyHash(preprocessingPath, contract.GetProperty("preprocessing_sha256").GetString());
+            var model = models.Single(x => x.GetProperty("profile").GetString() == profile);
             if (model.ValueKind == JsonValueKind.Undefined) throw new SimulationException("MODEL_CONTRACT_INVALID", $"模型契约缺少 profile={profile}");
             _inputName = model.GetProperty("input_name").GetString() ?? "input";
             _outputName = model.GetProperty("output_name").GetString() ?? "output";
@@ -43,19 +53,40 @@ internal sealed class OnnxRotor : IDisposable
             if (!model.TryGetProperty("output_constraint", out var constraint) || constraint.GetProperty("type").GetString() != "humidity_softplus_lower_bound" || constraint.GetProperty("beta").GetDouble() != 50) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 基线要求图内Softplus湿度非负头(beta=50)");
             ValidateColumns(profile, InputColumns, OutputColumns);
             using var prepDoc = JsonDocument.Parse(File.ReadAllText(preprocessingPath));
+            if (prepDoc.RootElement.GetProperty("schema_version").GetInt32() != 2)
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "预处理schema版本错误");
             var prep = prepDoc.RootElement.GetProperty("profiles").GetProperty(profile);
+            var profilePath = Path.Combine(root, $"preprocessing_{profile}.json");
+            VerifyHash(profilePath, model.GetProperty("preprocessing_profile_sha256").GetString());
+            using var profileDoc = JsonDocument.Parse(File.ReadAllText(profilePath));
+            if (JsonSerializer.Serialize(prep) != JsonSerializer.Serialize(profileDoc.RootElement)
+                || !prep.GetProperty("input_columns").EnumerateArray().Select(x => x.GetString()).SequenceEqual(InputColumns)
+                || !prep.GetProperty("output_columns").EnumerateArray().Select(x => x.GetString()).SequenceEqual(OutputColumns)
+                || prep.GetProperty("clip").GetBoolean()
+                || !prep.GetProperty("feature_range").EnumerateArray().Select(x => x.GetDouble()).SequenceEqual(new[] { -1.0, 1.0 })
+                || prep.GetProperty("input_scaling").GetString() != "sklearn_float32_inplace_float64_coefficients_v1")
+                throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} 预处理列、缩放或分文件与汇总文件不一致");
             _inputScale = Numbers(prep, "input_scale", _inputCount); _inputMin = Numbers(prep, "input_min", _inputCount);
             _outputScale = Numbers(prep, "output_scale", _outputCount); _outputMin = Numbers(prep, "output_min", _outputCount);
+            if (_inputScale.Concat(_outputScale).Any(x => x <= 0)) throw new SimulationException("MODEL_CONTRACT_INVALID", "MinMax缩放系数必须为正");
+            if (!prep.GetProperty("log1p_output_columns").EnumerateArray().Select(x => x.GetString()).SequenceEqual(new[] { "处理出口含湿量" }))
+                throw new SimulationException("MODEL_CONTRACT_INVALID", "仅处理出口含湿量允许log1p反变换");
             _log1pOutputs = Enumerable.Repeat(false, _outputCount).ToArray();
             foreach (var item in prep.GetProperty("log1p_output_columns").EnumerateArray())
             { var name = item.GetString(); var index = Array.IndexOf(OutputColumns.ToArray(), name!); if (index < 0) throw new SimulationException("MODEL_CONTRACT_INVALID", $"{profile} log1p 列不在输出契约中: {name}"); _log1pOutputs[index] = true; }
-            var modelFile = Path.Combine(root, model.GetProperty("onnx_file").GetString()!);
+            if (model.GetProperty("onnx_file").GetString() != profile + ".onnx") throw new SimulationException("MODEL_CONTRACT_INVALID", "模型文件名与profile不一致");
+            var modelFile = Path.Combine(root, profile + ".onnx");
             if (!File.Exists(modelFile)) throw new SimulationException("MODEL_MISSING", $"模型文件不存在: {modelFile}");
-            _session = new InferenceSession(modelFile);
-            if (!_session.InputMetadata.ContainsKey(_inputName) || !_session.OutputMetadata.ContainsKey(_outputName)) throw new SimulationException("MODEL_CONTRACT_INVALID", $"ONNX 张量名不匹配: {_inputName}/{_outputName}");
+            VerifyHash(modelFile, model.GetProperty("onnx_sha256").GetString());
+            session = new InferenceSession(modelFile);
+            if (session.InputMetadata.Count != 1 || session.OutputMetadata.Count != 1
+                || !session.InputMetadata.TryGetValue(_inputName, out var input) || !session.OutputMetadata.TryGetValue(_outputName, out var output))
+                throw new SimulationException("MODEL_CONTRACT_INVALID", $"ONNX 张量名不匹配: {_inputName}/{_outputName}");
+            ValidateTensor(input, _inputCount); ValidateTensor(output, _outputCount);
+            _session = session;
         }
-        catch (SimulationException) { throw; }
-        catch (Exception ex) { throw new SimulationException("MODEL_LOAD_FAILED", $"加载 {profile} ONNX 模型失败: {ex.Message}", ex); }
+        catch (SimulationException) { session?.Dispose(); throw; }
+        catch (Exception ex) { session?.Dispose(); throw new SimulationException("MODEL_LOAD_FAILED", $"加载 {profile} ONNX 模型失败: {ex.Message}", ex); }
     }
 
     public double[] Predict(double[] physicalInput)
@@ -67,7 +98,9 @@ internal sealed class OnnxRotor : IDisposable
         {
             if (!double.IsFinite(physicalInput[i])) throw new SimulationException("MODEL_INPUT_INVALID", $"{Profile} 输入存在非有限值");
             var value = (float)physicalInput[i];
-            scaled[i] = value * (float)_inputScale[i] + (float)_inputMin[i];
+            var product = (float)((double)value * _inputScale[i]);
+            scaled[i] = (float)((double)product + _inputMin[i]);
+            if (!float.IsFinite(scaled[i])) throw new SimulationException("MODEL_INPUT_INVALID", $"{Profile} 输入缩放超出float32范围");
         }
         var tensor = new DenseTensor<float>(scaled, new[] { 1, _inputCount });
         var input = NamedOnnxValue.CreateFromTensor(_inputName, tensor);
@@ -99,6 +132,19 @@ internal sealed class OnnxRotor : IDisposable
         var values = parent.GetProperty(name).EnumerateArray().Select(x => x.GetDouble()).ToArray();
         if (values.Length != count || values.Any(x => !double.IsFinite(x))) throw new SimulationException("MODEL_CONTRACT_INVALID", $"预处理参数 {name} 维度或数值无效");
         return values;
+    }
+    private static void VerifyHash(string path, string? expected)
+    {
+        if (!File.Exists(path)) throw new SimulationException("MODEL_MISSING", $"模型配套文件不存在: {path}");
+        var actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+        if (expected is null || !actual.Equals(expected, StringComparison.OrdinalIgnoreCase))
+            throw new SimulationException("MODEL_CONTRACT_INVALID", $"模型配套文件SHA256不匹配，请整套更新models: {Path.GetFileName(path)}");
+    }
+    private static void ValidateTensor(NodeMetadata metadata, int columns)
+    {
+        if (metadata.ElementType != typeof(float) || metadata.Dimensions.Length != 2
+            || metadata.Dimensions[1] != columns || metadata.Dimensions[0] is not (-1 or 1))
+            throw new SimulationException("MODEL_CONTRACT_INVALID", $"ONNX张量必须为float32[batch,{columns}]");
     }
     private static void ValidateColumns(string profile, IReadOnlyList<string> inputs, IReadOnlyList<string> outputs)
     {

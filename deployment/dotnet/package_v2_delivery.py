@@ -22,7 +22,33 @@ COMMON_DLLS = (
     "System.Drawing.Common.dll", "Microsoft.Win32.SystemEvents.dll",
     "onnxruntime.dll", "onnxruntime_providers_shared.dll",
 )
-PACKAGE_VERSION = "2.0.1"
+PACKAGE_VERSION = "2.0.2"
+
+
+def _validate_packages(nuget: Path, verifier: Path, models: Path) -> None:
+    """NuGet existence alone cannot prove it contains this build/model set."""
+    assemblies = {"Dehumidifier.Simulation": "Dehumidifier.Simulation.dll",
+                  **{package: title + ".dll" for _, title, package in PRODUCTS}}
+    for package, assembly in assemblies.items():
+        archive = _require(nuget / f"{package}.{PACKAGE_VERSION}.nupkg")
+        with ZipFile(archive) as packed:
+            if packed.read(f"lib/net8.0/{assembly}") != (verifier / assembly).read_bytes():
+                raise ValueError(f"NuGet内程序集与本次发布不一致：{archive.name}")
+            if package == "Dehumidifier.Simulation":
+                for name in MODEL_FILES:
+                    path = f"contentFiles/any/any/Dehumidifier/models/{name}"
+                    if packed.read(path) != (models / name).read_bytes():
+                        raise ValueError(f"NuGet内模型与本次导出不一致：{name}")
+
+
+def _validate_runtime_identity(report: dict | None, verifier: Path, models: Path) -> None:
+    if report is None or report.get("windows_runtime_validation_passed") is not True:
+        return
+    expected_models = {name: sha256(models / name) for name in MODEL_FILES}
+    expected_dlls = {name: sha256(verifier / name) for name in (
+        "Dehumidifier.Simulation.dll", *(p[1] + ".dll" for p in PRODUCTS))}
+    if report.get("model_sha256") != expected_models or report.get("assembly_sha256") != expected_dlls:
+        raise ValueError("运行报告缺少或不匹配本次DLL/模型SHA256，拒绝借用其他构建的通过结论")
 
 
 def _published_models(root: Path, models: Path) -> None:
@@ -111,22 +137,32 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
     _require(nuget / f"Dehumidifier.Simulation.{PACKAGE_VERSION}.nupkg")
     for _, _, package_id in PRODUCTS:
         _require(nuget / f"{package_id}.{PACKAGE_VERSION}.nupkg")
+    _validate_packages(nuget, verifier, models)
     strict_report = _json_report(validation, strict=True)
     runtime_report = _json_report(runtime)
+    _validate_runtime_identity(runtime_report, verifier, models)
     strict_passed = strict_report is not None and strict_report["passed"] is True and strict_report.get("strict_migration_passed", True) is True
     runtime_evaluated = runtime_report is not None and isinstance(runtime_report.get("windows_runtime_validation_passed"), bool)
     runtime_passed = runtime_evaluated and runtime_report["windows_runtime_validation_passed"] is True
     if examples is not None and not examples.is_dir():
         raise FileNotFoundError(examples)
+    quickstart = _require(ROOT / "deployment/dotnet/docs/快速使用.md")
+    run_example = _require(ROOT / "deployment/dotnet/samples/run_example.ps1")
+    sample = ROOT / "deployment/dotnet/samples/V2DllConsumer"
+    for name in ("Program.cs", "V2DllConsumer.csproj"):
+        _require(sample / name)
     output.mkdir(parents=True, exist_ok=False)
     summaries = []
     for kind, title, package_id in PRODUCTS:
         product = output / title
         dll = product / "dll"
         dll.mkdir(parents=True)
-        for name in (title + ".dll", *COMMON_DLLS):
+        # Both entries are required by the documented search->prediction sample.
+        # Ship a matched pair in each lib directory so hosts never borrow an
+        # unrelated entry assembly from another delivery/version.
+        for name in (*(p[1] + ".dll" for p in PRODUCTS), *COMMON_DLLS):
             shutil.copy2(verifier / name, dll / name)
-        for name in (title + ".xml", "Dehumidifier.Simulation.xml"):
+        for name in (*(p[1] + ".xml" for p in PRODUCTS), "Dehumidifier.Simulation.xml"):
             if (verifier / name).is_file():
                 shutil.copy2(verifier / name, dll / name)
         # The universal verifier uses both public entry assemblies; retain its
@@ -144,7 +180,7 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         if kind == "prediction" and include_winforms:
             shutil.copytree(build / "winforms", product / "examples/WinFormsDemo/publish")
         (product / "nuget").mkdir()
-        for name in (f"Dehumidifier.Simulation.{PACKAGE_VERSION}.nupkg", f"{package_id}.{PACKAGE_VERSION}.nupkg"):
+        for name in (f"{package}.{PACKAGE_VERSION}.nupkg" for package in ("Dehumidifier.Simulation", "Dehumidifier.Prediction", "Dehumidifier.Optimization")):
             shutil.copy2(nuget / name, product / "nuget" / name)
         copy_source(ROOT / "deployment/dotnet", product / "source/deployment/dotnet")
         for name in ("README.md", "AGENTS.md", "requirements.txt"):
@@ -162,13 +198,26 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
                 shutil.copy2(report_path, reports / filename)
                 if report_path.with_suffix(".md").is_file():
                     shutil.copy2(report_path.with_suffix(".md"), reports / Path(filename).with_suffix(".md"))
+        shutil.copy2(quickstart, product / "快速使用.md")
+        copy_source(sample, product / "接入示例")
+        for filename, run_mode in (("01_前向预测.cmd", "forward"), ("02_搜索并前向复算.cmd", "search")):
+            # ASCII content works with the default Windows cmd code page; the
+            # PowerShell file itself is UTF-8 BOM for Windows PowerShell 5.1.
+            script = ("@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "
+                      '"%~dp0run_example.ps1" -Mode ' + run_mode + "\r\nset runExit=%ERRORLEVEL%\r\npause\r\nexit /b %runExit%\r\n")
+            (product / filename).write_bytes(script.encode("ascii"))
+        # Use an ASCII path from cmd, preserve Chinese content for PS5.1.
+        (product / "run_example.ps1").write_text(run_example.read_text(encoding="utf-8"), encoding="utf-8-sig")
         metadata = {
             "schema_version": 2, "created_at": datetime.now(timezone.utc).isoformat(),
             "package_name": title, "package_kind": kind, "package_version": PACKAGE_VERSION,
             "main_assembly": f"dll/{title}.dll", "managed_framework": "net8.0", "platform": "win-x64",
             "runtime_requires_python": False,
             "recommended_configuration": "examples/qy1070_case.json",
+            "companion_assemblies_included": [p[1] + ".dll" for p in PRODUCTS],
             "dll_host_requires_dotnet8": True, "verification_executable_self_contained": True,
+            "requires_visual_cpp_v14_x64_runtime": True,
+            "visual_cpp_runtime_installer_included": False,
             "source_contract_aligned": True,
             "topology": "R2 process outlet -> CC3 -> Heater_Post -> Supply; six thermal loads",
             "current_python_compatible": "strict_passed" if strict_passed else "strict_migration_not_passed_or_not_evaluated",
@@ -189,9 +238,9 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
             "source_sha256": {p.relative_to(product / "source").as_posix(): sha256(p) for p in sorted((product / "source").rglob("*")) if p.is_file()},
         }
         (product / "package_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        mode = "forward" if kind == "prediction" else "search"
-        goals = " --dew-point-target -45 --supply-temp-target -35" if mode == "search" else ""
-        readme = f"# {title}\n\n入口为dll/{title}.dll，引用时同时部署dll目录依赖及models。NET8托管类库，宿主为Windows x64。verify为完整自包含验证程序，不依赖Python或预装.NET。\n\n先阅读v2模型DLL调用说明.md和reports，按当前实际报告区分运行、严格迁移与工程验收。最小运行命令：\n\n```powershell\n.\\verify\\Dehumidifier.V2Verify.exe --mode {mode} --models .\\models --config .\\examples\\qy1070_case.json --results-dir .\\results{goals}\n```\n\n本次运行证据已评估：{runtime_evaluated}；运行验证通过：{runtime_passed}；严格Python迁移通过：{strict_passed}。工程物理/实测验收未评估。NuGet目录只含本次业务主包与core包，不宣称离线还原全部依赖。\n"
+        runtime_label = ('通过' if runtime_passed else '未通过') if runtime_evaluated else '未评估'
+        strict_label = ('通过' if strict_passed else '未通过') if strict_report is not None else '未评估'
+        readme = f"# {title}（{PACKAGE_VERSION}）\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。详细证据见 `reports`；工程实测未评估。\n"
         (product / "README.md").write_text(readme, encoding="utf-8")
         summaries.append({"package_name": title, "kind": kind, **_archive(product)})
     result = {"output": str(output.resolve()), "products": summaries,

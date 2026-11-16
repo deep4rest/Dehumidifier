@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import importlib.util
 import os
 import subprocess
@@ -37,11 +38,16 @@ def test_exported_onnx_contract_matches_current_artifacts(tmp_path: Path):
         check=True,
     )
     contract = json.loads((output / "model_contract.json").read_text(encoding="utf-8"))
+    assert contract['schema_version'] == 2
+    assert contract['preprocessing_sha256'] == hashlib.sha256((output/'preprocessing.json').read_bytes()).hexdigest()
     assert {item["profile"] for item in contract["models"]} == {"xf", "main"}
     assert (output / "xf.onnx").is_file()
     assert (output / "main.onnx").is_file()
     assert (output / "preprocessing.json").is_file()
     for item in contract["models"]:
+        assert item['onnx_sha256'] == hashlib.sha256((output/item['onnx_file']).read_bytes()).hexdigest()
+        assert item['preprocessing_profile_sha256'] == hashlib.sha256((output/f"preprocessing_{item['profile']}.json").read_bytes()).hexdigest()
+        assert item['verification']['input_boundary'] == 'SingleRotorModel.predict_frame'
         assert item["verification"]["nonfinite_count"] == 0
         assert item["verification"]["max_abs_physical"] < 1e-3
         assert item["output_constraint"]["type"] == "humidity_softplus_lower_bound"
@@ -56,6 +62,7 @@ def test_preprocessing_contract_has_no_clip_and_log1p_only_on_process_humidity(t
     for profile in ("xf", "main"):
         item = payload["profiles"][profile]
         assert item["clip"] is False
+        assert item['input_scaling'] == 'sklearn_float32_inplace_float64_coefficients_v1'
         assert item["log1p_output_columns"] == ["处理出口含湿量"]
         assert len(item["input_scale"]) == 9
         assert len(item["output_scale"]) == 6
