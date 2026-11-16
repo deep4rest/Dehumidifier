@@ -83,6 +83,7 @@ try
             evaluated_count = search.Evaluations.Count,
             feasible_count = search.Evaluations.Count(c => c.Assessment.Feasible),
             best_controls = search.Best?.Controls,
+            best_config_path = search.BestConfigPath,
             best_assessment = search.Best?.Assessment,
             minimum_thermal_load_candidate = search.MinimumThermalLoadCandidate,
             best_forward = search.BestForwardResult is null ? null : PredictionModel.Summarize(search.BestForwardResult),

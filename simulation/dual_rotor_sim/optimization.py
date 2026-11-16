@@ -239,6 +239,21 @@ def assess_result(result, settings: SearchSettings, *, energy_reference_kW: floa
             "residuals":result.convergence.get("residuals")}
 
 
+def independent_assessments_match(actual: dict, expected: dict) -> bool:
+    """Verify final supply and each load; identical total Q/J alone is insufficient."""
+    fields = ('optimization_loss', 'thermal_load_sum_kW', 'supply_T_degC',
+              'supply_W_g_per_kg', 'supply_Tdp_degC')
+    loads = actual.get('energy_breakdown_kW')
+    expected_loads = expected.get('energy_breakdown_kW')
+    return (actual.get('feasible') is True
+            and actual.get('iterations') == expected.get('iterations')
+            and all(actual.get(key) is not None and expected.get(key) is not None
+                    and math.isclose(actual[key], expected[key], rel_tol=0., abs_tol=1e-9) for key in fields)
+            and isinstance(loads, dict) and isinstance(expected_loads, dict)
+            and loads.keys() == expected_loads.keys()
+            and all(math.isclose(loads[key], expected_loads[key], rel_tol=0., abs_tol=1e-9) for key in loads))
+
+
 def optimize_controls(config: dict, settings: SearchSettings, *, system=None,
                       evaluation_callback: Callable[[dict], None] | None = None) -> dict:
     """Return the lowest feasible candidate found; never claims a global proof.

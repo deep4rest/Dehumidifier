@@ -124,6 +124,8 @@ public sealed class SearchResult
     public SearchCandidate? Best { get; init; }
     public SearchCandidate? MinimumThermalLoadCandidate { get; init; }
     public SimulationConfig? BestConfig { get; init; }
+    /// <summary>可直接由PredictionModel.LoadConfiguration读取的完整最佳配置路径。</summary>
+    public string? BestConfigPath { get; init; }
     [JsonIgnore] public SimulationResult? BestForwardResult { get; init; }
     public bool BestIndependentlyVerified { get; init; }
     public CandidateAssessment? IndependentVerification { get; init; }

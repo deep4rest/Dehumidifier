@@ -1,5 +1,7 @@
 # 最终风量 KAN + C# / ONNX 部署源码
 
+2026-11-15当前版本**2.0.1**：[QY1070一致性排查与交付](../../docs/handoff/2026-11-15-QY1070前反向一致性排查.md)。两入口示例统一`examples/qy1070_case.json`，用`SearchResult.BestConfig`/`BestConfigPath`直接前向复算，避免手工搬运四温度遗漏固定工况或交换HeaterOa/HeaterLow。`validate_v2_roundtrip.py`启动真实搜索/前向独立进程，记录模型/DLL/输入哈希并比较完整物理结果。新旧DLL均在QY1070复算一致，未复现开发端约−40℃；2.0.1补查复算T/W/露点/各负荷与迭代数，53项C#、80项相关Python测试通过。下文2.0.0为历史交付；原默认1220mm工况不作为QY1070输入。
+
 2026-11-13 v2已实际构建：`露点与能耗预测模型v2.dll`与`最优能耗工况搜索模型v2.dll`，共享核心和NuGet均2.0.0，Windows x64/.NET8托管，不需Python。先读[本次交付](../../docs/handoff/2026-11-13-前向与反向模型v2-DLL交付.md)和[API说明](docs/v2模型DLL调用说明.md)。使用`build_v2.ps1`完成原build流程及两个入口专项测试/打包，再用`package_v2_delivery.py`生成两个中文名目录/ZIP并回读校验。实际C#测试51通过，外部DLL消费通过；严格迁移4/5通过，QY18/17差异仍失败。下方1.0.1及缺SDK描述保留其历史背景，不代表本次构建状态。
 
 本目录与当前 Python 共同采用最终企业规则：处理/冷吹风量输入、R1处理量1/3目标的再生补/漏风、DptAH露点表、零补风告警、relax=0.8。C#核心源码与主项目最终实现一致，NuGet业务版本1.0.1。完整流程见 [ONNX与DLL交付](../../docs/handoff/ONNX与DLL交付.md)。

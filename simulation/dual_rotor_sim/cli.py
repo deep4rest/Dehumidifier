@@ -100,7 +100,7 @@ def cmd_optimize(args) -> None:
     from dataclasses import asdict
     import torch
     import yaml
-    from .optimization import CONTROL_NAMES, SearchSettings, assess_result, optimize_controls
+    from .optimization import CONTROL_NAMES, SearchSettings, assess_result, independent_assessments_match, optimize_controls
     from .core.system.solver import build_system
 
     output = None
@@ -156,7 +156,7 @@ def cmd_optimize(args) -> None:
             # the original coupled solver. No cache or search state is reused.
             verified = _build_from_config(best_config)
             assessment = assess_result(verified,settings,energy_reference_kW=report['energy_reference_kW'])
-            match = all(math.isclose(assessment[key],report['best'][key],rel_tol=0.,abs_tol=1e-9) for key in ('optimization_loss','thermal_load_sum_kW')) if assessment["feasible"] else False
+            match = independent_assessments_match(assessment, report['best'])
             report["independent_verification"] = assessment
             report["best_independently_verified"] = bool(assessment["feasible"] and match)
             if report["best_independently_verified"]:

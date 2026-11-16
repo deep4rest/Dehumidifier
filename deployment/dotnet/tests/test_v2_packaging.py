@@ -44,7 +44,7 @@ def fixture(tmp_path, monkeypatch):
     (build / "v2verify/System.Private.CoreLib.dll").write_bytes(b"framework-fixture")
     (build / "nuget").mkdir()
     for name in ("Dehumidifier.Simulation", "Dehumidifier.Prediction", "Dehumidifier.Optimization"):
-        (build / "nuget" / (name + ".2.0.0.nupkg")).write_bytes(b"current-package")
+        (build / "nuget" / (name + f".{package.PACKAGE_VERSION}.nupkg")).write_bytes(b"current-package")
     return package, build, models, tmp_path
 
 

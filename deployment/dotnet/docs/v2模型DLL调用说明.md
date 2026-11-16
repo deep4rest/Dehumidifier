@@ -16,7 +16,7 @@ using var model = new PredictionModel(
     Path.Combine(AppContext.BaseDirectory, "models"),
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "DehumidifierV2", "prediction"));
-SimulationConfig config = PredictionModel.LoadConfiguration("examples/default_case.json");
+SimulationConfig config = PredictionModel.LoadConfiguration("examples/qy1070_case.json");
 // 或由完整JSON文本解析：PredictionModel.ParseConfiguration(configJson)
 using var cancellation = new CancellationTokenSource();
 SimulationResult result = await model.PredictAsync(config, cancellationToken: cancellation.Token);
@@ -37,7 +37,7 @@ using Dehumidifier.Optimization;
 using Dehumidifier.Prediction;
 
 using var model = new EnergyOptimizer("models", "results/search");
-var config = PredictionModel.LoadConfiguration("examples/default_case.json");
+var config = PredictionModel.LoadConfiguration("examples/qy1070_case.json");
 var settings = new SearchSettings
 {
     DewPointTargetC = -45.0,
@@ -54,6 +54,11 @@ if (result.Feasible && result.BestIndependentlyVerified)
     Console.WriteLine(result.Best.Assessment.OptimizationLoss);
     Console.WriteLine(result.Best.Assessment.ThermalLoadSumKW);
     Console.WriteLine(result.ResultJsonPath);
+    // 直接传完整配置，保留QY1070工况及末端目标，避免按位置抄四个温度。
+    using var forward = new PredictionModel("models", "results/replay");
+    var replay = await forward.PredictAsync(result.BestConfig!);
+    Console.WriteLine(PredictionModel.Summarize(replay).ToJson());
+    Console.WriteLine(result.BestConfigPath);
 }
 ```
 
@@ -63,13 +68,31 @@ if (result.Feasible && result.BestIndependentlyVerified)
 
 `Best`是最小J候选，`MinimumThermalLoadCandidate`另存裸负荷最低点；二者可能不同。结果保留候选和独立复算，`Feasible=false`表示没有找到可用控制参数。搜索按当前边界和预算执行，不保证全局最优；C#和SciPy随机算法不保证逐点同序，目标与验收契约保持一致。
 
+## QY1070搜索与前向复算
+
+两边统一读取`qy1070_case.json`：两转轮直径1070 mm，新风/回风/再生补风上限分别3500/7334/277 m³/h，两冷吹量167/667 m³/h，转速8/6 rpm。`default_case.json`是1220 mm、4200/8800/333、200/800 m³/h的另一工况，不能互换。接口仍支持显式提供其他完整工况，不会自动把它改成QY1070。
+
+搜索直接调用前向使用的`Simulator`，只覆盖四个具名控制温度，并设置末端目标；其余模块、输入和求解参数一致。相对未启用末端的前向链路，唯一物理扩展为主转轮出口后的CC3与Heater_Post。原QY1070配置不带送风目标，因此直接预测时末端旁通；使用`BestConfig`复算会包含搜索时的末端。核对原链路时比较`AfterR2_P`；核对搜索结果时比较最终`Supply`。后加热等湿，后表冷凝结时才会降低含湿量和露点。
+
+开发接入应直接用`result.BestConfig`或`PredictionModel.LoadConfiguration(result.BestConfigPath!)`，并保留同一套六份模型文件和共享核心DLL。仅传四个温度不能保证风量、尺寸、转速、压力、模型及末端一致。若确需逐字段映射，请按名称对应：`Cc1OutletC→cc1_T_outlet_degC`、`Cc2OutletC→cc2_T_outlet_degC`、`HeaterOaC→heater_oa_T_degC`（新风再生）、`HeaterLowC→heater_low_T_degC`（主轮再生）。`ControlTemperatures`的后两项是Oa、Low，`ControlSetpointsConfig`构造函数的后两项是Low、Oa，禁止直接照位置搬运。
+
+露点目标−45℃且默认容差1℃表示允许−46～−44℃，不承诺恰好−45℃。但**搜索输出露点与同配置前向复算露点必须一致**，与目标容差是两种不同检查；−40℃不合格。2.0.1补强独立复算，逐项检查送风温度/湿度/露点、六负荷及迭代次数，避免只比总负荷与J漏掉差异。
+
+可执行独立进程验证（默认QY1070）：
+
+```powershell
+conda run --no-capture-output -n dehumidifier python deployment/dotnet/validate_v2_roundtrip.py --verifier <本次构建>/v2verify/Dehumidifier.V2Verify.exe --models <本次模型目录> --output results/deployment/新的复算目录 --dew-point-target -45 --supply-temp-target -35
+```
+
+该脚本核对除四控制温度与末端目标外完整配置不变，重新启动前向进程，比较所有物理记录（含history），并记录输入、模型及DLL的SHA256。`--contrast-config deployment/dotnet/examples/default_case.json`额外诊断工况混用、末端旁通及−55℃冷凝；这些对照不作为目标达标方案。开发端若仍出现−40℃，应对照报告中的完整输入配置、字段映射及文件哈希；仅凭“QY1070”名称无法确认实际输入一致。
+
 ## 取消、错误与并发
 
 同一实例的请求串行执行，取消在迭代/候选之间检查；不保证打断正在执行的原生推理。先取消并等待在途任务结束，再Dispose。`OperationCanceledException`表示已取消，`SimulationException.Code`和反向的`OptimizationException.Code`区分配置、模型、计算、固定基准、独立复算和留档错误；非法搜索设置还会抛出`ArgumentException`。配置未知字段会失败，不会悄悄忽略。
 
 ## 实际DLL消费示例和验证工具
 
-`samples/V2DllConsumer`只引用交付DLL文件，不引用本仓库源码工程。使用SDK编译时通过`-p:ModelDllDirectory=绝对DLL目录`指定三业务程序集及依赖所在目录。示例的search模式采用少量代数和显式初值供接入测试，正式搜索使用完整预算。
+`samples/V2DllConsumer`只引用交付DLL文件，不引用本仓库源码工程。使用SDK编译时通过`-p:ModelDllDirectory=绝对DLL目录`指定三业务程序集及依赖所在目录。示例的search模式执行搜索，并将完整`BestConfig`交给独立`PredictionModel`复算；差异超过1e-9时退出7。传入`examples/qy1070_case.json`完成QY1070接入验证。
 
 ```powershell
 dotnet build samples/V2DllConsumer/V2DllConsumer.csproj -c Release -p:ModelDllDirectory=C:/绝对路径/lib
@@ -78,9 +101,9 @@ dotnet build samples/V2DllConsumer/V2DllConsumer.csproj -c Release -p:ModelDllDi
 `Dehumidifier.V2Verify.exe`同时引用两个新入口，可使用以下模式：
 
 ```powershell
-.\verify\Dehumidifier.V2Verify.exe --mode forward --models .\models --config .\examples\default_case.json --results-dir .\results\forward --summary-output .\reports\forward.json
-.\verify\Dehumidifier.V2Verify.exe --mode search --models .\models --config .\examples\default_case.json --results-dir .\results\search --dew-point-target -45 --supply-temp-target -35 --summary-output .\reports\search.json
-.\verify\Dehumidifier.V2Verify.exe --mode cancel --models .\models --config .\examples\default_case.json --results-dir .\results\cancel
+.\verify\Dehumidifier.V2Verify.exe --mode forward --models .\models --config .\examples\qy1070_case.json --results-dir .\results\forward --summary-output .\reports\forward.json
+.\verify\Dehumidifier.V2Verify.exe --mode search --models .\models --config .\examples\qy1070_case.json --results-dir .\results\search --dew-point-target -45 --supply-temp-target -35 --summary-output .\reports\search.json
+.\verify\Dehumidifier.V2Verify.exe --mode cancel --models .\models --config .\examples\qy1070_case.json --results-dir .\results\cancel
 ```
 
 退出码：0成功，2配置/模型/计算错误，3留档失败，4前向未收敛，5取消，6搜索无合格方案。cancel模式先验证预取消请求，再验证同一实例可正常使用；成功退出0。输出摘要中的记录路径用于定位完整精度结果，不能只看程序是否启动。

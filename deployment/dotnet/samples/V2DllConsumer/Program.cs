@@ -23,11 +23,19 @@ if (args[0] == "search")
     {
         DewPointTargetC = -45,
         SupplyTemperatureTargetC = -35,
-        MaxGenerations = 1,
-        PopulationMultiplier = 4,
-        Seeds = new[] { 20261113 },
-        InitialControls = new ControlTemperatures(9.1, 16.2, 98.5, 91.7),
     });
+    if (!result.Feasible || !result.BestIndependentlyVerified || result.BestConfig is null)
+        return 6;
+    // Replay the complete QY1070 configuration, including terminal target,
+    // geometry, all five flows, pressure, rotor speeds and named controls.
+    using var prediction = new PredictionModel(args[1], Path.Combine(args[3], "external_forward"));
+    var replay = await prediction.PredictAsync(result.BestConfig);
+    var expected = result.Best!.Assessment;
+    bool matches = replay.Converged
+        && Math.Abs(replay.Supply.DewPointC - expected.SupplyDewPointC!.Value) <= 1e-9
+        && Math.Abs(replay.Supply.TemperatureC - expected.SupplyTemperatureC!.Value) <= 1e-9
+        && Math.Abs(replay.Supply.HumidityGPerKg - expected.SupplyHumidityGPerKg!.Value) <= 1e-9
+        && Math.Abs(replay.CoolingLoadKW + replay.HeatingLoadKW - expected.ThermalLoadSumKW!.Value) <= 1e-9;
     Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
     {
         feasible = result.Feasible,
@@ -35,8 +43,11 @@ if (args[0] == "search")
         controls = result.Best?.Controls,
         assessment = result.Best?.Assessment,
         result.ResultJsonPath,
+        result.BestConfigPath,
+        forward_replay_matches = matches,
+        forward_replay = PredictionModel.Summarize(replay),
     }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-    return result.Feasible && result.BestIndependentlyVerified ? 0 : 6;
+    return matches ? 0 : 7;
 }
 Console.Error.WriteLine("模式只支持forward或search");
 return 2;

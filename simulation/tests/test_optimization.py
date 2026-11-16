@@ -30,6 +30,24 @@ def test_low_load_failure_and_wet_output_cannot_beat_feasible_trial():
     assert not wet['feasible'] and wet['score']>good['score']
 
 
+def test_independent_replay_rejects_equal_loss_with_a_different_dew_point():
+    from dual_rotor_sim.core.system.psychrometrics import humidity_ratio_from_dew_point_C
+    settings=opt.SearchSettings(-45.,20.,energy_reference_kW=120.)
+    before=opt.assess_result(result(W=float(humidity_ratio_from_dew_point_C(-45.1))),settings)
+    after=opt.assess_result(result(W=float(humidity_ratio_from_dew_point_C(-44.9))),settings)
+    assert before['optimization_loss']==pytest.approx(after['optimization_loss'],abs=1e-12)
+    assert opt.independent_assessments_match(before,copy.deepcopy(before))
+    assert not opt.independent_assessments_match(after,before)
+
+
+def test_independent_replay_rejects_changed_load_distribution_with_equal_total():
+    assessment=opt.assess_result(result(),opt.SearchSettings(-45.,20.,energy_reference_kW=120.))
+    altered=copy.deepcopy(assessment)
+    altered['energy_breakdown_kW']['CC1_kW']+=1.
+    altered['energy_breakdown_kW']['CC2_kW']-=1.
+    assert not opt.independent_assessments_match(altered,assessment)
+
+
 def test_unclipped_relative_humidity_rejects_hidden_supersaturation():
     sample=result(T=20.,W=30.)
     assert sample.supply_state.RH==1.

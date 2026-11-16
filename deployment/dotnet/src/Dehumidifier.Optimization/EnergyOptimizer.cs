@@ -203,7 +203,7 @@ public sealed class EnergyOptimizer : IDisposable
                 // iteration. Public production calls additionally save JSON/PNG.
                 verified=await _verify(bestConfig,token).ConfigureAwait(false);
                 verification=CandidateScoring.Assess(verified,settings,fixedReference);
-                independent=verification.Feasible && Close(verification.OptimizationLoss,best.Assessment.OptimizationLoss,1e-9) && Close(verification.ThermalLoadSumKW,best.Assessment.ThermalLoadSumKW,1e-9);
+                independent=VerificationMatches(verification,best.Assessment);
                 if(!independent) throw new OptimizationException("INDEPENDENT_VERIFICATION_FAILED","最佳候选独立复算失败，不能作为可行解交付。");
                 File.WriteAllText(Path.Combine(dir,"best_config.json"),JsonSerializer.Serialize(bestConfig,JsonOptions),new UTF8Encoding(false));
             }
@@ -213,6 +213,7 @@ public sealed class EnergyOptimizer : IDisposable
                 EnergyReferenceKW=fixedReference!.Value,EnergyReferenceSource=settings.EnergyReferenceKW.HasValue?"explicit":"original_configuration_at_supply_temperature_target",
                 Baseline=baseline,Best=best,MinimumThermalLoadCandidate=records.Where(x=>x.EligibleForSelection && x.Assessment.Feasible).MinBy(x=>x.Assessment.ThermalLoadSumKW),
                 BestConfig=bestConfig,BestForwardResult=verified,IndependentVerification=verification,BestIndependentlyVerified=independent,
+                BestConfigPath=bestConfig is null?null:Path.Combine(dir,"best_config.json"),
                 Evaluations=records.AsReadOnly(),SeedRuns=seedRuns.AsReadOnly(),
                 BestForwardJsonPath=verified?.ResultJsonPath,BestDashboardPngPath=verified?.DashboardPngPath,
                 ResultJsonPath=Path.Combine(dir,"search.json"),
@@ -244,6 +245,18 @@ public sealed class EnergyOptimizer : IDisposable
 
     private static bool IsCandidateNumericalError(Exception exception)=>exception is ArithmeticException || exception is SimulationException error && error.Code is "INVALID_PHYSICS" or "SOLVER_INVALID" or "MODEL_OUTPUT_INVALID";
     private static bool Close(double? a,double? b,double tolerance)=>a.HasValue && b.HasValue && Math.Abs(a.Value-b.Value)<=tolerance;
+    // Equal Q and J do not imply equal dew point: +/- errors in the same
+    // weighted region can produce identical absolute-distance penalties.
+    private static bool VerificationMatches(CandidateAssessment actual,CandidateAssessment expected)
+        => actual.Feasible && actual.Iterations==expected.Iterations
+        && Close(actual.OptimizationLoss,expected.OptimizationLoss,1e-9)
+        && Close(actual.ThermalLoadSumKW,expected.ThermalLoadSumKW,1e-9)
+        && Close(actual.SupplyTemperatureC,expected.SupplyTemperatureC,1e-9)
+        && Close(actual.SupplyHumidityGPerKg,expected.SupplyHumidityGPerKg,1e-9)
+        && Close(actual.SupplyDewPointC,expected.SupplyDewPointC,1e-9)
+        && actual.EnergyBreakdownKW is not null && expected.EnergyBreakdownKW is not null
+        && actual.EnergyBreakdownKW.Count==expected.EnergyBreakdownKW.Count
+        && expected.EnergyBreakdownKW.All(x=>actual.EnergyBreakdownKW.TryGetValue(x.Key,out double q) && Close(q,x.Value,1e-9));
     private static void Shuffle(int[] values,Random random) {for(int i=values.Length-1;i>0;i--){int j=random.Next(i+1);(values[i],values[j])=(values[j],values[i]);}}
     private static void TryFlush(StreamWriter writer) {try{writer.Flush();}catch(Exception ex) when(ex is IOException or UnauthorizedAccessException){}}
     private static void TryWriteDiagnostic(string path,object value)

@@ -22,7 +22,7 @@ COMMON_DLLS = (
     "System.Drawing.Common.dll", "Microsoft.Win32.SystemEvents.dll",
     "onnxruntime.dll", "onnxruntime_providers_shared.dll",
 )
-PACKAGE_VERSION = "2.0.0"
+PACKAGE_VERSION = "2.0.1"
 
 
 def _published_models(root: Path, models: Path) -> None:
@@ -167,6 +167,7 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
             "package_name": title, "package_kind": kind, "package_version": PACKAGE_VERSION,
             "main_assembly": f"dll/{title}.dll", "managed_framework": "net8.0", "platform": "win-x64",
             "runtime_requires_python": False,
+            "recommended_configuration": "examples/qy1070_case.json",
             "dll_host_requires_dotnet8": True, "verification_executable_self_contained": True,
             "source_contract_aligned": True,
             "topology": "R2 process outlet -> CC3 -> Heater_Post -> Supply; six thermal loads",
@@ -190,7 +191,7 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "package_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         mode = "forward" if kind == "prediction" else "search"
         goals = " --dew-point-target -45 --supply-temp-target -35" if mode == "search" else ""
-        readme = f"# {title}\n\n入口为dll/{title}.dll，引用时同时部署dll目录依赖及models。NET8托管类库，宿主为Windows x64。verify为完整自包含验证程序，不依赖Python或预装.NET。\n\n先阅读v2模型DLL调用说明.md和reports，按当前实际报告区分运行、严格迁移与工程验收。最小运行命令：\n\n```powershell\n.\\verify\\Dehumidifier.V2Verify.exe --mode {mode} --models .\\models --config .\\examples\\default_case.json --results-dir .\\results{goals}\n```\n\n本次运行证据已评估：{runtime_evaluated}；运行验证通过：{runtime_passed}；严格Python迁移通过：{strict_passed}。工程物理/实测验收未评估。NuGet目录只含本次业务主包与core包，不宣称离线还原全部依赖。\n"
+        readme = f"# {title}\n\n入口为dll/{title}.dll，引用时同时部署dll目录依赖及models。NET8托管类库，宿主为Windows x64。verify为完整自包含验证程序，不依赖Python或预装.NET。\n\n先阅读v2模型DLL调用说明.md和reports，按当前实际报告区分运行、严格迁移与工程验收。最小运行命令：\n\n```powershell\n.\\verify\\Dehumidifier.V2Verify.exe --mode {mode} --models .\\models --config .\\examples\\qy1070_case.json --results-dir .\\results{goals}\n```\n\n本次运行证据已评估：{runtime_evaluated}；运行验证通过：{runtime_passed}；严格Python迁移通过：{strict_passed}。工程物理/实测验收未评估。NuGet目录只含本次业务主包与core包，不宣称离线还原全部依赖。\n"
         (product / "README.md").write_text(readme, encoding="utf-8")
         summaries.append({"package_name": title, "kind": kind, **_archive(product)})
     result = {"output": str(output.resolve()), "products": summaries,

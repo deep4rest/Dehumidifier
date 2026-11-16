@@ -7,7 +7,7 @@ namespace Dehumidifier.Optimization.Tests;
 
 public sealed class SearchTests
 {
-    private static SimulationConfig Config()=>Simulator.LoadConfiguration(Path.Combine(AppContext.BaseDirectory,"examples/default_case.json"));
+    private static SimulationConfig Config()=>Simulator.LoadConfiguration(Path.Combine(AppContext.BaseDirectory,"examples/qy1070_case.json"));
     private static SearchSettings Settings(double reference=100)=>new()
     {
         DewPointTargetC=-45,SupplyTemperatureTargetC=-35,EnergyReferenceKW=reference,
@@ -99,6 +99,18 @@ public sealed class SearchTests
         Assert.True(calls>result.UniqueForwardEvaluations); // independent re-evaluation
         Assert.True(File.Exists(result.ResultJsonPath));
         Assert.Equal(-35,result.BestConfig!.ControlSetpoints.SupplyTemperatureTargetC);
+        Assert.Equal(1070,result.BestConfig.SystemParams.Rotor1.DiameterMm);
+        Assert.Equal(1070,result.BestConfig.SystemParams.Rotor2.DiameterMm);
+        Assert.Equal(original.OutdoorAir,result.BestConfig.OutdoorAir);
+        Assert.Equal(original.ReturnAir,result.BestConfig.ReturnAir);
+        Assert.Equal(original.RegenOutdoorAir,result.BestConfig.RegenOutdoorAir);
+        Assert.Equal(original.SystemParams,result.BestConfig.SystemParams);
+        Assert.Equal(original.ControlSetpoints.Rotor1Rpm,result.BestConfig.ControlSetpoints.Rotor1Rpm);
+        Assert.Equal(original.ControlSetpoints.Rotor2Rpm,result.BestConfig.ControlSetpoints.Rotor2Rpm);
+        var reloaded=Simulator.LoadConfiguration(result.BestConfigPath!);
+        Assert.Equal(JsonSerializer.Serialize(result.BestConfig),JsonSerializer.Serialize(reloaded));
+        Assert.Equal(result.Best!.Controls.HeaterOaC,reloaded.ControlSetpoints.HeaterOaC);
+        Assert.Equal(result.Best.Controls.HeaterLowC,reloaded.ControlSetpoints.HeaterLowC);
     }
 
     [Fact]
@@ -168,6 +180,38 @@ public sealed class SearchTests
             double x=config.ControlSetpoints.Cc1OutletC;
             counts.TryGetValue(x,out int count);counts[x]=count+1;
             return Task.FromResult(Result(q:count==0?100+x:1000+x));
+        });
+        var error=await Assert.ThrowsAsync<OptimizationException>(()=>optimizer.OptimizeAsync(Config(),Settings()));
+        Assert.Equal("INDEPENDENT_VERIFICATION_FAILED",error.Code);
+    }
+
+    [Fact]
+    public async Task SameLossAndLoadWithDifferentDewPointCannotBeDelivered()
+    {
+        var seen=new HashSet<string>();
+        using var optimizer=new EnergyOptimizer(Temp(),(config,_)=>
+        {
+            bool first=seen.Add(JsonSerializer.Serialize(config));
+            // Both errors use the middle region and identical |e|, Q and J.
+            return Task.FromResult(Result(dewPoint:first?-45.1:-44.9));
+        });
+        var error=await Assert.ThrowsAsync<OptimizationException>(()=>optimizer.OptimizeAsync(Config(),Settings()));
+        Assert.Equal("INDEPENDENT_VERIFICATION_FAILED",error.Code);
+    }
+
+    [Fact]
+    public async Task ChangedLoadDistributionWithSameTotalCannotBeDelivered()
+    {
+        var seen=new HashSet<string>();
+        using var optimizer=new EnergyOptimizer(Temp(),(config,_)=>
+        {
+            var result=Result();
+            if(!seen.Add(JsonSerializer.Serialize(config)))
+            {
+                result.EnergyBreakdownKW["CC1_kW"]+=1;
+                result.EnergyBreakdownKW["CC2_kW"]-=1;
+            }
+            return Task.FromResult(result);
         });
         var error=await Assert.ThrowsAsync<OptimizationException>(()=>optimizer.OptimizeAsync(Config(),Settings()));
         Assert.Equal("INDEPENDENT_VERIFICATION_FAILED",error.Code);
