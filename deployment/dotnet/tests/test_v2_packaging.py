@@ -58,10 +58,11 @@ def test_two_names_hashes_minimal_lib_and_no_unperformed_claims(fixture):
     package, build, models, tmp = fixture
     output = tmp / "delivery"
     result = package.assemble(build, models, output, delivery_date="20261124", delivery_version="2.1")
-    assert [p["package_name"] for p in result["products"]] == ["露点与能耗预测模型v2", "最优能耗工况搜索模型v2"]
+    assert [p["package_name"] for p in result["products"]] == ["露点与能耗预测模型", "最优能耗工况搜索模型"]
     for entry in result["products"]:
         product = Path(entry["directory"])
         assert product.name == entry['package_name'] + '_20261124_v2.1'
+        assert product.name.count('v') == 1
         assert Path(entry['archive']).name == product.name + '.zip'
         assert Path(entry['manifest']).name == product.name + '.manifest.json'
         assert Path(entry['archive'] + '.sha256').read_text(encoding='utf-8').strip() == entry['sha256'] + '  ' + product.name + '.zip'

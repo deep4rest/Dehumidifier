@@ -166,7 +166,8 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
     output.mkdir(parents=True, exist_ok=False)
     summaries = []
     for kind, title, package_id in PRODUCTS:
-        delivery_name = f"{title}_{delivery_date}_v{delivery_version}"
+        product_name = title.removesuffix("v2")
+        delivery_name = f"{product_name}_{delivery_date}_v{delivery_version}"
         product = output / delivery_name
         dll = product / "dll"
         dll.mkdir(parents=True)
@@ -223,7 +224,7 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "run_example.ps1").write_text(run_example.read_text(encoding="utf-8"), encoding="utf-8-sig")
         metadata = {
             "schema_version": 2, "created_at": datetime.now(timezone.utc).isoformat(),
-            "package_name": title, "package_kind": kind, "package_version": delivery_version,
+            "package_name": product_name, "package_kind": kind, "package_version": delivery_version,
             "delivery_name": delivery_name, "delivery_date": delivery_date,
             "delivery_version": delivery_version, "binary_package_version": PACKAGE_VERSION,
             "version_increment_rule": "training_dataset_expansion_only",
@@ -257,9 +258,9 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "package_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         runtime_label = ('通过' if runtime_passed else '未通过') if runtime_evaluated else '未评估'
         strict_label = ('通过' if strict_passed else '未通过') if strict_report is not None else '未评估'
-        readme = f"# {title}（v{delivery_version}，{delivery_date}）\n\n交付版本仅在扩充训练数据时递增；字段修正、重训、修复和重新打包沿用当前数据版本。包内DLL/NuGet的实际技术构建版本为{PACKAGE_VERSION}，由元数据和SHA记录对应关系。\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧模型与float32历史对照见历史交接说明，不作为本次新权重的验证证据。详细证据见 `reports`；工程实测未评估。\n"
+        readme = f"# {product_name}（v{delivery_version}，{delivery_date}）\n\n交付版本仅在扩充训练数据时递增；字段修正、重训、修复和重新打包沿用当前数据版本。包内DLL/NuGet的实际技术构建版本为{PACKAGE_VERSION}，由元数据和SHA记录对应关系。\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧模型与float32历史对照见历史交接说明，不作为本次新权重的验证证据。详细证据见 `reports`；工程实测未评估。\n"
         (product / "README.md").write_text(readme, encoding="utf-8")
-        summaries.append({"package_name": title, "kind": kind, "delivery_name": delivery_name,
+        summaries.append({"package_name": product_name, "kind": kind, "delivery_name": delivery_name,
                           "delivery_date": delivery_date, "delivery_version": delivery_version,
                           "binary_package_version": PACKAGE_VERSION, **_archive(product)})
     result = {"output": str(output.resolve()), "products": summaries,
