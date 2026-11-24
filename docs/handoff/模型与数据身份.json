@@ -394,5 +394,212 @@
       "sha256": "9e73eec10804723b76f5321654dbcab50201abb3753c416a14e2ecc743ba3b99",
       "bytes": 2213328
     }
+  },
+  "candidate_model_pair_20261123": {
+    "status": "validated_candidate_not_installed",
+    "run_id": "20261123_xf_cold_blow_1to20",
+    "xf": {
+      "package": "results/training/20261123_xf_cold_blow_1to20/staging/artifacts/kan_xf_single",
+      "baseline_id": "xf-volume9-softplus-b50-cold1to20-20261123",
+      "profile": "xf",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "处理入口温度(℃)",
+        "入口含湿量(g/kg)",
+        "处理风量",
+        "冷吹风量",
+        "再生温度(℃)",
+        "再生风量",
+        "再生入口含湿量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          24
+        ],
+        "grid_size": 6,
+        "spline_order": 3,
+        "in_features": 9,
+        "out_features": 6
+      },
+      "output_constraint": {
+        "type": "humidity_softplus_lower_bound",
+        "columns": [
+          "处理出口含湿量",
+          "冷吹出口含湿量",
+          "再生出口含湿量"
+        ],
+        "beta": 50.0,
+        "physical_zero_scaled": [
+          -1.0035581674589764,
+          -1.063227481504687,
+          -1.4092678607538744
+        ],
+        "lower_bound_scaled_fp32": [
+          -1.0035581588745117,
+          -1.0632274150848389,
+          -1.409267783164978
+        ],
+        "boundary_rounding": "ceil_float32",
+        "formula": "z0 + softplus(raw-z0, beta)"
+      },
+      "target_transform": {
+        "log1p_targets": [
+          "处理出口含湿量"
+        ]
+      },
+      "parameter_count": 3600,
+      "source_run": "results/training/20261123_xf_cold_blow_1to20/full/20261123_193940_新风_KAN_896226fa",
+      "best_epoch": 42,
+      "completed_epochs": 62,
+      "data_fingerprint": "0c8a2818a6bf9c39d16989fefeeefebf9e284e7b1ad120af3b975f45dbf186b3",
+      "files": {
+        "config_snapshot.yaml": "f77c03040769600c1cd7a337bfda534b48194295f66118c81c0afad0e2fb5b95",
+        "model_metadata.json": "babfbdc52d5658afa0aeb9548df1f4ea1b1a1773b04505f45e9232390f499a7a",
+        "training_run.json": "945583fd2745b66d3a01058ab9958003bd124fa9ec87a7e7ce55df4145f3768b",
+        "model/best_model.pt": "745a296ebee9bf08274b36eb78220279ec078253d13c4c6b2a6115accd7ad45f",
+        "model/metadata.json": "babfbdc52d5658afa0aeb9548df1f4ea1b1a1773b04505f45e9232390f499a7a",
+        "model/scalers.pkl": "869c4dcb264adbf24011ee7560716e1f456310040029986b31ce2d1f02ec9e58",
+        "model/scaler_meta.json": "4d8220e628fa327077994ed9910dcb954ba40987e701d2f8dd5879385fd6a7b6"
+      },
+      "promotion_status": "validated_candidate_not_installed",
+      "precision_tradeoffs": "See corrected-input validation/test and W<0.01 segments in this run comparison; not a uniform accuracy improvement"
+    },
+    "main": {
+      "package": "results/training/20261123_xf_cold_blow_1to20/staging/artifacts/kan_main_single",
+      "profile": "main",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "入口含湿量(g/kg)",
+        "转轮转速(rpm)",
+        "再生温度(℃)",
+        "冷吹入口温度(℃)",
+        "处理入口温度(℃)",
+        "处理风量",
+        "冷吹风量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          16
+        ],
+        "grid_size": 5,
+        "spline_order": 3,
+        "in_features": 9,
+        "out_features": 6
+      },
+      "files": {
+        "config_snapshot.yaml": "102f5238b33588a4086215d83dea7bba0ffc4827533f77101fce94157cfdd76b",
+        "model_metadata.json": "a100fc9520434bc92e3ebecb2582610e12ae4ea209a99d96bdb848936655b522",
+        "training_run.json": "2354413bbaff8ab90eaffdc3a25f4ae7a46d36d031c5f1e59af1f58095d85510",
+        "model/best_model.pt": "5bbf124573997dad65c66d1127af00386d6ca56e5033cc39ace54d70d644908b",
+        "model/metadata.json": "a100fc9520434bc92e3ebecb2582610e12ae4ea209a99d96bdb848936655b522",
+        "model/scalers.pkl": "228b7260634fd8ad1a78664f5dac8f466adad9f31696c8abb34ba9c977aade0a",
+        "model/scaler_meta.json": "7e08b03f06132398250ed1bc46a0fc87af39095b6a5b1f0631672d226bb0ebcb"
+      },
+      "baseline_id": "main-volume9-softplus-b50-20261110",
+      "purpose": "user-requested humidity Softplus solution; raw nonnegative verified; temperature coverage and physical conservation still need engineering validation",
+      "source_run": "results/training/20261110_主转轮Softplus非负约束/full/20261110_004354_主转轮_KAN_8ed80727",
+      "parameter_count": 2160,
+      "best_epoch": 199,
+      "completed_epochs": 200,
+      "rows": {
+        "train": 47991,
+        "validation": 6232,
+        "test": 6384
+      },
+      "raw_test_negative_humidity": {
+        "处理出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 2.369226049738236e-07
+        },
+        "冷吹出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 1.0330458292688876e-05
+        },
+        "再生出口含湿量": {
+          "count": 0,
+          "ratio": 0.0,
+          "minimum": 0.1313726160954937
+        }
+      },
+      "test_process_W_MAE_g_kg": 0.0031803703735576584,
+      "not_identical_to_historical_weights": true,
+      "output_constraint": {
+        "type": "humidity_softplus_lower_bound",
+        "columns": [
+          "处理出口含湿量",
+          "冷吹出口含湿量",
+          "再生出口含湿量"
+        ],
+        "beta": 50.0,
+        "physical_zero_scaled": [
+          -1.0064658890042657,
+          -1.0118869396740038,
+          -1.0447744711889726
+        ],
+        "lower_bound_scaled_fp32": [
+          -1.0064657926559448,
+          -1.0118868350982666,
+          -1.0447744131088257
+        ],
+        "boundary_rounding": "ceil_float32",
+        "formula": "z0 + softplus(raw-z0, beta)"
+      },
+      "target_transform": {
+        "log1p_targets": [
+          "处理出口含湿量"
+        ]
+      },
+      "optimizer": {
+        "name": "AdamW",
+        "learning_rate": 0.001,
+        "weight_decay": 0.0,
+        "batch_size": 256,
+        "seed": 20260908
+      },
+      "data_fingerprint": "9a01c9568bc8d7c3b80fa0eea0650375efa0b510650eaca38733df12a4f4c584",
+      "retrained": false
+    }
+  },
+  "corrected_dataset_files_20261123": {
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_训练集.csv": {
+      "sha256": "beb678a19b1a23afb144884efaff700944b00861daac3234c9260a0abb59991f",
+      "bytes": 37807575,
+      "split": "train",
+      "rows": 485041
+    },
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_验证集.csv": {
+      "sha256": "7097bbede951d515dd82ee0586932349038d0105921907cc0e8e66a87314ca27",
+      "bytes": 4350488,
+      "split": "validation",
+      "rows": 57000
+    },
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_测试集.csv": {
+      "sha256": "0f43ddbf7b9ce8d4cfc40d0e7be6a79ad0430e573e78d30076cdf107a16a40d6",
+      "bytes": 5010609,
+      "split": "test",
+      "rows": 63338
+    }
   }
 }

@@ -5,7 +5,8 @@ param(
     [string]$DotnetPath = "dotnet",
     [string]$PackageCache = "",
     [switch]$SkipTests,
-    [switch]$NoRestore
+    [switch]$NoRestore,
+    [string[]]$AdditionalArguments = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,6 +26,7 @@ $env:NUGET_PACKAGES = $cache
 $env:NUGET_HTTP_CACHE_PATH = Join-Path $Output "http-cache"
 
 function Invoke-Dotnet([string[]]$Arguments) {
+    $Arguments = @($Arguments) + $AdditionalArguments
     Write-Host ("dotnet " + ($Arguments -join " "))
     # 显式进程调用兼容从 WSL 启动的 Windows PowerShell，并检查实际退出码。
     $buildStdoutPath = Join-Path $Output "dotnet-last.stdout.log"

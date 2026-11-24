@@ -71,7 +71,7 @@ public sealed class SimulationTests
     public void AssemblyVersionDistinguishesTheV2SixLoadPackage()
     {
         var version = typeof(Simulator).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        Assert.StartsWith("2.0.3", version);
+        Assert.StartsWith("2.0.4", version);
     }
 
     [Fact]
@@ -117,9 +117,8 @@ public sealed class SimulationTests
         using var simulator = new Simulator(models, results);
         var result = await simulator.SimulateAsync(config);
         Assert.True(result.Converged);
-        // v2正式Softplus模型2026-11-13 Windows ONNX实测17次，PyTorch为18次。
-        // 旧模型13次断言及本次首次失败记录保留在本次evidence/build日志中。
-        // 这里只冻结当前DLL行为；严格迁移仍独立报告18/17差异，未放宽门槛。
+        // 2026-11-23冷吹=处理/20重训候选，实际Windows与正式PyTorch严格逐字段核验。
+        // 新模型QY1070为17次；旧2.0.3模型17次记录保留在历史报告，不能跨权重沿用。
         Assert.Equal(17, result.Iterations);
         Assert.True(File.Exists(result.ResultJsonPath));
         Assert.True(File.Exists(result.DashboardPngPath));

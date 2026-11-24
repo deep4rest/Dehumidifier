@@ -6,7 +6,7 @@
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Dehumidifier.Simulation</PackageId>
-    <Version>2.0.3</Version>
+    <Version>2.0.4</Version>
     <Authors>ModelBuild</Authors>
     <Description>C# 双转轮除湿机稳态整机仿真 DLL，使用 ONNX Runtime 推理。</Description>
     <RepositoryUrl>https://github.com/deep4rest/Dehumidifier</RepositoryUrl>

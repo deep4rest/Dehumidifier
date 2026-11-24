@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageId>Dehumidifier.Optimization</PackageId>
-    <Version>2.0.3</Version>
+    <Version>2.0.4</Version>
     <Description>双转轮系统六项冷热负荷及分区露点距离的有界控制搜索。</Description>
     <Authors>ModelBuild</Authors>
   </PropertyGroup>

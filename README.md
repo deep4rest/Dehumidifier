@@ -1,5 +1,7 @@
 # 低露点双转轮除湿机建模平台
 
+2026-11-23新风全量冷吹风量修正为处理风量/20，605379条及原分区/标签保留，重训最佳42/早停62轮。2.0.4候选已通过65项C#、六组严格迁移和两个QY目标独立复算；低湿等指标存在退化，非全面精度提升。原正式模型未替换，主轮不重训。 见[本轮说明](docs/handoff/2026-11-23-新风冷吹风量修正与DLL候选.md)。
+
 当前最终实现采用两台固定六输出**风量 KAN**、企业再生补/漏风规则及DptAH露点表。Python和C#采用同一套业务契约，当前v2 NuGet业务版本2.0.3。所有Agent先读 [AGENTS.md](AGENTS.md)，再读 [另一台电脑接手入口](docs/handoff/README.md)。
 
 2026-11-15[统一推理精度修复](docs/handoff/2026-11-15-统一推理精度与严格迁移修复.md)：权重不变，Python/ONNX统一双精度内部计算、float32输入输出边界，DLL锁定CPU算子路径。新正式PyTorch与实际C#原5组严格**5/5通过**，额外32组32/32对照一致（4组共同未收敛，仅作诊断），阈值/history未改。65项C#、263项Python通过/35跳过。此结论基于升级后的运行精度；旧float32对照及2.0.2的0/5原记录保留，不能混称同一基准。请同步Python代码并整包替换dll/models。
@@ -63,12 +65,12 @@ python -m pip check
 
 2026-11-09用户已选定**9输入、三个湿度非负输出的KAN**为新风正式基线。主体9→24→6、grid6/order3、3600参数，处理出口含湿量保留log1p/expm1；三个湿度采用参数量为0的Softplus平滑物理下界(beta=50)，温度输出保持原形式。主转轮于2026-11-10按原结构与参数重训，用于恢复整机验证能力；整机物理契约不变。
 
-本机已安装到`artifacts/kan_xf_single`。GitHub仅提供源码、模型身份和说明，模型/scaler、CSV、训练报告及ONNX必须带外恢复，完整SHA见[身份清单](docs/handoff/模型与数据身份.json)。新风三份CSV固定放在`data/新风转轮基线_9输入`，605,379条及485,041/57,000/63,338的尺寸隔离分区不变。原始转速列仍在审计数据中。
+本机已安装到`artifacts/kan_xf_single`。GitHub仅提供源码、模型身份和说明，模型/scaler、CSV、训练报告及ONNX必须带外恢复，完整SHA见[身份清单](docs/handoff/模型与数据身份.json)。修正版新风三份CSV放在`data/新风转轮基线_9输入_冷吹1比20`（旧目录保留审计），605,379条及485,041/57,000/63,338的尺寸隔离分区不变。原始转速列仍在审计数据中。
 
 ```bash
 python -m training.single_kan.train \
   --profile xf --model-type kan \
-  --dataset-dir data/新风转轮基线_9输入 \
+  --dataset-dir data/新风转轮基线_9输入_冷吹1比20 \
   --device cpu --smoke-test --max-steps 4 --batch-size 256 --seed 20260908
 ```
 

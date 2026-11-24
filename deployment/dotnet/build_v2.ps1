@@ -3,7 +3,8 @@ param(
     [string]$Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path,
     [Parameter(Mandatory=$true)][string]$Output,
     [string]$DotnetPath = "dotnet",
-    [string]$PackageCache = ""
+    [string]$PackageCache = "",
+    [string[]]$AdditionalArguments = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,9 +16,10 @@ $env:NUGET_PACKAGES = $cache
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 
 # Retain the documented core build/test, verifier, WinForms and NuGet workflow.
-& (Join-Path $PSScriptRoot "build.ps1") -Root $Root -Output $Output -DotnetPath $DotnetPath -PackageCache $cache
+& (Join-Path $PSScriptRoot "build.ps1") -Root $Root -Output $Output -DotnetPath $DotnetPath -PackageCache $cache -AdditionalArguments $AdditionalArguments
 
 function Invoke-V2Dotnet([string[]]$Arguments) {
+    $Arguments = @($Arguments) + $AdditionalArguments
     Write-Host ("dotnet " + ($Arguments -join " "))
     & $DotnetPath @Arguments
     if ($LASTEXITCODE -ne 0) { throw "v2 dotnet失败: $LASTEXITCODE" }

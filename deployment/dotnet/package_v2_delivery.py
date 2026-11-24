@@ -22,7 +22,7 @@ COMMON_DLLS = (
     "System.Drawing.Common.dll", "Microsoft.Win32.SystemEvents.dll",
     "onnxruntime.dll", "onnxruntime_providers_shared.dll",
 )
-PACKAGE_VERSION = "2.0.3"
+PACKAGE_VERSION = "2.0.4"
 
 
 def _validate_packages(nuget: Path, verifier: Path, models: Path) -> None:
@@ -241,7 +241,7 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "package_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         runtime_label = ('通过' if runtime_passed else '未通过') if runtime_evaluated else '未评估'
         strict_label = ('通过' if strict_passed else '未通过') if strict_report is not None else '未评估'
-        readme = f"# {title}（{PACKAGE_VERSION}）\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧float32历史对照另列于运行报告，不混称通过。详细证据见 `reports`；工程实测未评估。\n"
+        readme = f"# {title}（{PACKAGE_VERSION}）\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧模型与float32历史对照见历史交接说明，不作为本次新权重的验证证据。详细证据见 `reports`；工程实测未评估。\n"
         (product / "README.md").write_text(readme, encoding="utf-8")
         summaries.append({"package_name": title, "kind": kind, **_archive(product)})
     result = {"output": str(output.resolve()), "products": summaries,
