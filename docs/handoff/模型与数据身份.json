@@ -1,10 +1,10 @@
 {
   "schema_version": 2,
-  "baseline": "两台9输入六输出KAN均采用Softplus湿度非负头(beta=50)；新风2026-11-09、主转轮2026-11-10；整机原工况均数值收敛，温度超域与水汽守恒仍待工程验证",
+  "baseline": "正式新风2026-11-23冷吹量=处理量/20重训Softplus beta50，主轮2026-11-10保持；2.0.4 DLL与正式模型对同源，精度取舍/物理超域与水焓失衡保留",
   "runtime_models": {
     "xf": {
       "package": "artifacts/kan_xf_single",
-      "baseline_id": "xf-volume9-softplus-b50-20261109",
+      "baseline_id": "xf-volume9-softplus-b50-cold1to20-20261123",
       "profile": "xf",
       "input_cols": [
         "转轮厚度",
@@ -62,25 +62,21 @@
         ]
       },
       "parameter_count": 3600,
-      "source_run": "results/training/20261109_新风湿度非负约束对照/full/20261109_040750_新风_KAN_ca56cefa",
-      "best_epoch": 117,
-      "completed_epochs": 137,
-      "data_fingerprint": "2c028d68e5ecdef889672752f824a102ac9d4f04fc7dcea9d47c7f07ded936d3",
+      "source_run": "results/training/20261123_xf_cold_blow_1to20/full/20261123_193940_新风_KAN_896226fa",
+      "best_epoch": 42,
+      "completed_epochs": 62,
+      "data_fingerprint": "0c8a2818a6bf9c39d16989fefeeefebf9e284e7b1ad120af3b975f45dbf186b3",
       "files": {
-        "config_snapshot.yaml": "0690017d5a41afc46ef940bdd699e5878c531c962a1a20049988fbb371bf237f",
-        "model/best_model.pt": "3cddc258bbffe3194110d3fff3752070be4f45bdeca18dd3a632798e4c0f35ef",
-        "model/metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
-        "model/scaler_meta.json": "d669a25503d3d74c6b7e5f90aa25851031d63a0022fd169555269a10a7b89d29",
-        "model/scalers.pkl": "0d436af5b1f6b41c963579f44ec8ef215af55ee294a97d9ea65940b79e058f8a",
-        "model_metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
-        "training_run.json": "c8f35687d51ca03ac3aa0f8728831494b75abe228c02fc81399671ca0d3268dc"
+        "config_snapshot.yaml": "f77c03040769600c1cd7a337bfda534b48194295f66118c81c0afad0e2fb5b95",
+        "model_metadata.json": "babfbdc52d5658afa0aeb9548df1f4ea1b1a1773b04505f45e9232390f499a7a",
+        "training_run.json": "945583fd2745b66d3a01058ab9958003bd124fa9ec87a7e7ce55df4145f3768b",
+        "model/best_model.pt": "745a296ebee9bf08274b36eb78220279ec078253d13c4c6b2a6115accd7ad45f",
+        "model/metadata.json": "babfbdc52d5658afa0aeb9548df1f4ea1b1a1773b04505f45e9232390f499a7a",
+        "model/scalers.pkl": "869c4dcb264adbf24011ee7560716e1f456310040029986b31ce2d1f02ec9e58",
+        "model/scaler_meta.json": "4d8220e628fa327077994ed9910dcb954ba40987e701d2f8dd5879385fd6a7b6"
       },
-      "accepted_test_tradeoff": {
-        "process_W_MAE_change_pct": 0.77,
-        "low_W_below_0.01_MAE_change_pct": -62.63,
-        "regen_W_MAE_change_pct": 28.2,
-        "process_W_negative_count": 0
-      }
+      "precision_tradeoffs": "See corrected-input validation/test and W<0.01 segments in this run comparison; not a uniform accuracy improvement",
+      "installed_after_explicit_confirmation": true
     },
     "main": {
       "package": "artifacts/kan_main_single",
@@ -202,21 +198,21 @@
       "sha256": "d5096d37573f85f275059b8ce636ff928f11aee08c819b6c3192f9ce651b463d",
       "bytes": 450096
     },
-    "data/新风转轮基线_9输入/新风转轮_训练集.csv": {
-      "sha256": "6e942c49c3bdcfb76840e0f44814efe79b3b8096b561817a44b697e2ea6409c4",
-      "bytes": 37088442,
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_训练集.csv": {
+      "sha256": "beb678a19b1a23afb144884efaff700944b00861daac3234c9260a0abb59991f",
+      "bytes": 37807575,
       "split": "train",
       "rows": 485041
     },
-    "data/新风转轮基线_9输入/新风转轮_验证集.csv": {
-      "sha256": "e835432aafbf15264e65e366b5dc3198c80d419e4e0fc5a18039080a772453ff",
-      "bytes": 4336238,
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_验证集.csv": {
+      "sha256": "7097bbede951d515dd82ee0586932349038d0105921907cc0e8e66a87314ca27",
+      "bytes": 4350488,
       "split": "validation",
       "rows": 57000
     },
-    "data/新风转轮基线_9输入/新风转轮_测试集.csv": {
-      "sha256": "b60ce559dde3077916bec4030e696f616608d4e2ae1a631c162cefb9752ccf89",
-      "bytes": 4863345,
+    "data/新风转轮基线_9输入_冷吹1比20/新风转轮_测试集.csv": {
+      "sha256": "0f43ddbf7b9ce8d4cfc40d0e7be6a79ad0430e573e78d30076cdf107a16a40d6",
+      "bytes": 5010609,
       "split": "test",
       "rows": 63338
     }
@@ -379,6 +375,87 @@
       "test_process_W_MAE_g_kg": 0.0032427275463700624,
       "not_identical_to_historical_weights": true,
       "local_backup": "results/training/20261110_主转轮Softplus非负约束/baseline_unconstrained_package"
+    },
+    "xf_before_cold_blow_correction_20261123": {
+      "package": "artifacts/kan_xf_single",
+      "baseline_id": "xf-volume9-softplus-b50-20261109",
+      "profile": "xf",
+      "input_cols": [
+        "转轮厚度",
+        "转轮直径",
+        "处理入口温度(℃)",
+        "入口含湿量(g/kg)",
+        "处理风量",
+        "冷吹风量",
+        "再生温度(℃)",
+        "再生风量",
+        "再生入口含湿量"
+      ],
+      "direct_outputs": [
+        "处理出口温度",
+        "处理出口含湿量",
+        "冷吹出口温度",
+        "冷吹出口含湿量",
+        "再生出口温度",
+        "再生出口含湿量"
+      ],
+      "architecture": {
+        "name": "KAN",
+        "hidden_widths": [
+          24
+        ],
+        "grid_size": 6,
+        "spline_order": 3,
+        "in_features": 9,
+        "out_features": 6
+      },
+      "output_constraint": {
+        "type": "humidity_softplus_lower_bound",
+        "columns": [
+          "处理出口含湿量",
+          "冷吹出口含湿量",
+          "再生出口含湿量"
+        ],
+        "beta": 50.0,
+        "physical_zero_scaled": [
+          -1.0035581674589764,
+          -1.063227481504687,
+          -1.4092678607538744
+        ],
+        "lower_bound_scaled_fp32": [
+          -1.0035581588745117,
+          -1.0632274150848389,
+          -1.409267783164978
+        ],
+        "boundary_rounding": "ceil_float32",
+        "formula": "z0 + softplus(raw-z0, beta)"
+      },
+      "target_transform": {
+        "log1p_targets": [
+          "处理出口含湿量"
+        ]
+      },
+      "parameter_count": 3600,
+      "source_run": "results/training/20261109_新风湿度非负约束对照/full/20261109_040750_新风_KAN_ca56cefa",
+      "best_epoch": 117,
+      "completed_epochs": 137,
+      "data_fingerprint": "2c028d68e5ecdef889672752f824a102ac9d4f04fc7dcea9d47c7f07ded936d3",
+      "files": {
+        "config_snapshot.yaml": "0690017d5a41afc46ef940bdd699e5878c531c962a1a20049988fbb371bf237f",
+        "model/best_model.pt": "3cddc258bbffe3194110d3fff3752070be4f45bdeca18dd3a632798e4c0f35ef",
+        "model/metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
+        "model/scaler_meta.json": "d669a25503d3d74c6b7e5f90aa25851031d63a0022fd169555269a10a7b89d29",
+        "model/scalers.pkl": "0d436af5b1f6b41c963579f44ec8ef215af55ee294a97d9ea65940b79e058f8a",
+        "model_metadata.json": "c6b99a0dd1ff2e7741f21b6d28ace95c07759919c1e970cec385ea22de80924a",
+        "training_run.json": "c8f35687d51ca03ac3aa0f8728831494b75abe228c02fc81399671ca0d3268dc"
+      },
+      "accepted_test_tradeoff": {
+        "process_W_MAE_change_pct": 0.77,
+        "low_W_below_0.01_MAE_change_pct": -62.63,
+        "regen_W_MAE_change_pct": 28.2,
+        "process_W_negative_count": 0
+      },
+      "backup_package": "results/training/20261123_xf_cold_blow_1to20/promotion_backup/kan_xf_single"
     }
   },
   "historical_dataset_files": {
@@ -393,10 +470,28 @@
     "data/转轮数据集_尺寸隔离_8比1比1/新风转轮_验证集.csv": {
       "sha256": "9e73eec10804723b76f5321654dbcab50201abb3753c416a14e2ecc743ba3b99",
       "bytes": 2213328
+    },
+    "data/新风转轮基线_9输入/新风转轮_训练集.csv": {
+      "sha256": "6e942c49c3bdcfb76840e0f44814efe79b3b8096b561817a44b697e2ea6409c4",
+      "bytes": 37088442,
+      "split": "train",
+      "rows": 485041
+    },
+    "data/新风转轮基线_9输入/新风转轮_验证集.csv": {
+      "sha256": "e835432aafbf15264e65e366b5dc3198c80d419e4e0fc5a18039080a772453ff",
+      "bytes": 4336238,
+      "split": "validation",
+      "rows": 57000
+    },
+    "data/新风转轮基线_9输入/新风转轮_测试集.csv": {
+      "sha256": "b60ce559dde3077916bec4030e696f616608d4e2ae1a631c162cefb9752ccf89",
+      "bytes": 4863345,
+      "split": "test",
+      "rows": 63338
     }
   },
   "candidate_model_pair_20261123": {
-    "status": "validated_candidate_not_installed",
+    "status": "same_pair_installed_after_explicit_confirmation",
     "run_id": "20261123_xf_cold_blow_1to20",
     "xf": {
       "package": "results/training/20261123_xf_cold_blow_1to20/staging/artifacts/kan_xf_single",
