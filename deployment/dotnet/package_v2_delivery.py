@@ -11,6 +11,7 @@ from pathlib import Path
 from package_delivery import MODEL_FILES, copy_source, sha256
 from zipfile import ZIP_DEFLATED, ZipFile
 import hashlib
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCTS = (
@@ -23,6 +24,9 @@ COMMON_DLLS = (
     "onnxruntime.dll", "onnxruntime_providers_shared.dll",
 )
 PACKAGE_VERSION = "2.0.4"
+# User-facing data release; PACKAGE_VERSION above identifies the actual binaries/NuGet.
+# Increment this only when training data is expanded, not for fixes or repackaging.
+DELIVERY_VERSION = "2.1"
 
 
 def _validate_packages(nuget: Path, verifier: Path, models: Path) -> None:
@@ -84,8 +88,8 @@ def _json_report(path: Path | None, strict: bool = False) -> dict | None:
 def _archive(directory: Path) -> dict:
     files = sorted(p for p in directory.rglob("*") if p.is_file())
     manifest = {p.relative_to(directory).as_posix(): sha256(p) for p in files}
-    manifest_path = directory.with_suffix(".manifest.json")
-    archive = directory.with_suffix(".zip")
+    manifest_path = directory.with_name(directory.name + ".manifest.json")
+    archive = directory.with_name(directory.name + ".zip")
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     with ZipFile(archive, "x", ZIP_DEFLATED, compresslevel=6) as packed:
         for path in files:
@@ -109,8 +113,16 @@ def _archive(directory: Path) -> dict:
 
 def assemble(build: Path, models: Path, output: Path, validation: Path | None = None,
              runtime: Path | None = None, examples: Path | None = None,
-             include_winforms: bool = True) -> dict:
+             include_winforms: bool = True, *, delivery_date: str | None = None,
+             delivery_version: str = DELIVERY_VERSION) -> dict:
     """先校验全部输入，再创建尚不存在的父目录和两个命名成品。"""
+    delivery_date = delivery_date or datetime.now().astimezone().strftime("%Y%m%d")
+    if re.fullmatch(r"\d{8}", delivery_date) is None:
+        raise ValueError("交付日期必须为YYYYMMDD")
+    datetime.strptime(delivery_date, "%Y%m%d")
+    delivery_version = delivery_version.removeprefix("v")
+    if re.fullmatch(r"\d+\.\d+", delivery_version) is None:
+        raise ValueError("交付版本必须为主版本.数据版本，例如2.1；仅扩充训练数据时递增")
     if output.exists():
         raise FileExistsError(f"拒绝覆盖已有交付：{output}")
     if not build.is_dir() or not models.is_dir():
@@ -154,7 +166,8 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
     output.mkdir(parents=True, exist_ok=False)
     summaries = []
     for kind, title, package_id in PRODUCTS:
-        product = output / title
+        delivery_name = f"{title}_{delivery_date}_v{delivery_version}"
+        product = output / delivery_name
         dll = product / "dll"
         dll.mkdir(parents=True)
         # Both entries are required by the documented search->prediction sample.
@@ -210,7 +223,10 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "run_example.ps1").write_text(run_example.read_text(encoding="utf-8"), encoding="utf-8-sig")
         metadata = {
             "schema_version": 2, "created_at": datetime.now(timezone.utc).isoformat(),
-            "package_name": title, "package_kind": kind, "package_version": PACKAGE_VERSION,
+            "package_name": title, "package_kind": kind, "package_version": delivery_version,
+            "delivery_name": delivery_name, "delivery_date": delivery_date,
+            "delivery_version": delivery_version, "binary_package_version": PACKAGE_VERSION,
+            "version_increment_rule": "training_dataset_expansion_only",
             "main_assembly": f"dll/{title}.dll", "managed_framework": "net8.0", "platform": "win-x64",
             "runtime_requires_python": False,
             "inference_numeric_policy": "float64_body_float32_io_v1",
@@ -241,10 +257,14 @@ def assemble(build: Path, models: Path, output: Path, validation: Path | None = 
         (product / "package_metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         runtime_label = ('通过' if runtime_passed else '未通过') if runtime_evaluated else '未评估'
         strict_label = ('通过' if strict_passed else '未通过') if strict_report is not None else '未评估'
-        readme = f"# {title}（{PACKAGE_VERSION}）\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧模型与float32历史对照见历史交接说明，不作为本次新权重的验证证据。详细证据见 `reports`；工程实测未评估。\n"
+        readme = f"# {title}（v{delivery_version}，{delivery_date}）\n\n交付版本仅在扩充训练数据时递增；字段修正、重训、修复和重新打包沿用当前数据版本。包内DLL/NuGet的实际技术构建版本为{PACKAGE_VERSION}，由元数据和SHA记录对应关系。\n\n先读[快速使用.md](快速使用.md)。双击 `01_前向预测.cmd` 或 `02_搜索并前向复算.cmd` 即可运行，无需Python或预装.NET。开发接入示例位于 `接入示例`，只引用本包DLL。两个入口和共享核心已配套放入 `dll`，请整套使用。\n\n本次Windows运行验证：{runtime_label}；严格Python迁移：{strict_label}。该对照基于Python与DLL统一的双精度内部推理；旧模型与float32历史对照见历史交接说明，不作为本次新权重的验证证据。详细证据见 `reports`；工程实测未评估。\n"
         (product / "README.md").write_text(readme, encoding="utf-8")
-        summaries.append({"package_name": title, "kind": kind, **_archive(product)})
+        summaries.append({"package_name": title, "kind": kind, "delivery_name": delivery_name,
+                          "delivery_date": delivery_date, "delivery_version": delivery_version,
+                          "binary_package_version": PACKAGE_VERSION, **_archive(product)})
     result = {"output": str(output.resolve()), "products": summaries,
+              "delivery_date": delivery_date, "delivery_version": delivery_version,
+              "binary_package_version": PACKAGE_VERSION,
               "strict_migration_passed": strict_passed, "windows_runtime_validation_passed": runtime_passed}
     (output / "交付索引.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return result
@@ -259,10 +279,13 @@ def main() -> int:
     parser.add_argument("--runtime-report", type=Path)
     parser.add_argument("--examples", type=Path, help="可选附加工况JSON目录")
     parser.add_argument("--without-winforms", action="store_true")
+    parser.add_argument("--delivery-date", required=True, help="用户时区的实际交付日期YYYYMMDD")
+    parser.add_argument("--delivery-version", default=DELIVERY_VERSION, help="交付数据版本，例如2.1；仅扩充训练数据时递增")
     args = parser.parse_args()
     print(json.dumps(assemble(args.build.resolve(), args.models.resolve(), args.output.resolve(),
                               args.validation_report, args.runtime_report, args.examples,
-                              include_winforms=not args.without_winforms), ensure_ascii=False))
+                              include_winforms=not args.without_winforms,
+                              delivery_date=args.delivery_date, delivery_version=args.delivery_version), ensure_ascii=False))
     return 0
 
 

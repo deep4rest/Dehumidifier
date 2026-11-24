@@ -57,11 +57,17 @@ def fixture(tmp_path, monkeypatch):
 def test_two_names_hashes_minimal_lib_and_no_unperformed_claims(fixture):
     package, build, models, tmp = fixture
     output = tmp / "delivery"
-    result = package.assemble(build, models, output)
+    result = package.assemble(build, models, output, delivery_date="20261124", delivery_version="2.1")
     assert [p["package_name"] for p in result["products"]] == ["露点与能耗预测模型v2", "最优能耗工况搜索模型v2"]
     for entry in result["products"]:
         product = Path(entry["directory"])
+        assert product.name == entry['package_name'] + '_20261124_v2.1'
+        assert Path(entry['archive']).name == product.name + '.zip'
+        assert Path(entry['manifest']).name == product.name + '.manifest.json'
+        assert Path(entry['archive'] + '.sha256').read_text(encoding='utf-8').strip() == entry['sha256'] + '  ' + product.name + '.zip'
         metadata = json.loads((product / "package_metadata.json").read_text(encoding="utf-8"))
+        assert metadata['delivery_version'] == '2.1'
+        assert metadata['binary_package_version'] == package.PACKAGE_VERSION
         assert metadata["strict_migration_evaluated"] is False
         assert metadata["strict_migration_passed"] is False
         assert metadata["windows_runtime_validation_evaluated"] is False
@@ -75,14 +81,14 @@ def test_two_names_hashes_minimal_lib_and_no_unperformed_claims(fixture):
         assert 'search' in (product / '02_搜索并前向复算.cmd').read_text(encoding='ascii')
         assert not (product / "dll/System.Private.CoreLib.dll").exists()
         assert (product / "verify/System.Private.CoreLib.dll").exists()
-        manifest = json.loads(product.with_suffix(".manifest.json").read_text(encoding="utf-8"))
+        manifest = json.loads(Path(entry['manifest']).read_text(encoding="utf-8"))
         assert all(package.sha256(product / name) == sha for name, sha in manifest.items())
         with ZipFile(entry["archive"]) as zip:
             assert zip.testzip() is None
             assert set(zip.namelist()) == {product.name + "/" + name for name in manifest}
         assert entry["sha256"] == package.sha256(Path(entry["archive"]))
-    assert (output / "露点与能耗预测模型v2/examples/WinFormsDemo/publish/WinFormsDemo.exe").is_file()
-    assert not (output / "最优能耗工况搜索模型v2/examples/WinFormsDemo").exists()
+    assert (Path(result['products'][0]['directory']) / "examples/WinFormsDemo/publish/WinFormsDemo.exe").is_file()
+    assert not (Path(result['products'][1]['directory']) / "examples/WinFormsDemo").exists()
     with pytest.raises(FileExistsError):
         package.assemble(build, models, output)
 
